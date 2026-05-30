@@ -1,10 +1,10 @@
 """
-QuantEngine Pro - FastAPI REST + WebSocket Backend
+QuantEngine Pro - FastAPI REST + WebSocket 后端
 ====================================================
-Provides endpoints: /api/health, /api/equity, /api/positions,
+提供的端点: /api/health, /api/equity, /api/positions,
 /api/trades, /api/performance, /api/strategies, /api/market/overview,
 /api/llm/analysis/{symbol}, /api/backtest/run
-WebSocket: /ws for real-time updates
+WebSocket: /ws 实时推送
 """
 
 import asyncio
@@ -27,8 +27,8 @@ strategy_registry = None
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title="QuantEngine Pro API",
-        description="Quantitative Trading System API",
+        title="量化引擎专业版 API",
+        description="量化交易系统 API",
         version="0.1.0",
     )
     app.add_middleware(
@@ -97,13 +97,13 @@ def create_app() -> FastAPI:
 
     @app.post("/api/backtest/run")
     async def run_backtest(config: Dict):
-        return {"status": "not_implemented", "message": "Use CLI: python scripts/run_backtest.py"}
+        return {"status": "not_implemented", "message": "请使用 CLI 运行回测: python scripts/run_backtest.py"}
 
     @app.get("/api/llm/analysis/{symbol}")
     async def get_llm(symbol: str):
         if llm_service:
             try:
-                result = await llm_service.analyze_symbol(symbol=symbol, technical_data="Recent data")
+                result = await llm_service.analyze_symbol(symbol=symbol, technical_data="近期行情")
                 return {"symbol": symbol, "sentiment": result.sentiment,
                         "summary": result.summary, "confidence": result.confidence}
             except Exception as e:

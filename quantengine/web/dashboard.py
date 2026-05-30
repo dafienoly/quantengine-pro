@@ -1,12 +1,12 @@
 """
-QuantEngine Pro - Plotly Dash Dashboard
+QuantEngine Pro - Plotly Dash 仪表盘
 =========================================
-Interactive web dashboard with 5 panels:
-1. Overview - Equity curve, positions, P&L, risk gauges
-2. Strategy - Signal flow, performance comparison
-3. Backtest - Config → run → report visualization
-4. AI Analysis - Sentiment timeline, AI picks
-5. Logs - System logs, trade records, alerts
+5 个面板的交互式 Web 看板：
+1. 总览 - 权益曲线、持仓、盈亏、风险指标
+2. 策略 - 信号流、表现对比
+3. 回测 - 配置 → 运行 → 报告可视化
+4. AI分析 - 情感时间线、AI推荐
+5. 日志 - 系统日志、交易记录、告警
 """
 
 from typing import Dict
@@ -19,23 +19,23 @@ from dash.dependencies import Input, Output
 
 def create_dashboard(backtest_engine=None, strategy_registry=None, market_overview=None) -> dash.Dash:
     """Create the Plotly Dash dashboard application."""
-    app = dash.Dash(__name__, title="QuantEngine Pro Dashboard", update_title=None)
+    app = dash.Dash(__name__, title="量化引擎专业版", update_title=None)
 
     app.layout = html.Div([
         # Header
         html.Div([
-            html.H1("QuantEngine Pro", style={"color": "#fff", "margin": "0", "fontSize": "20px"}),
+            html.H1("量化引擎专业版", style={"color": "#fff", "margin": "0", "fontSize": "20px"}),
             html.Span("v0.1.0", style={"color": "#888", "fontSize": "12px"}),
         ], style={"backgroundColor": "#1a1a2e", "padding": "12px 30px",
                    "display": "flex", "justifyContent": "space-between", "alignItems": "center"}),
 
         # Tabs
         dcc.Tabs(id="tabs", value="overview", children=[
-            dcc.Tab(label="Overview", value="overview"),
-            dcc.Tab(label="Strategies", value="strategies"),
-            dcc.Tab(label="Backtest", value="backtest"),
-            dcc.Tab(label="AI Analysis", value="ai"),
-            dcc.Tab(label="Logs", value="logs"),
+            dcc.Tab(label="总览", value="overview"),
+            dcc.Tab(label="策略", value="strategies"),
+            dcc.Tab(label="回测", value="backtest"),
+            dcc.Tab(label="AI分析", value="ai"),
+            dcc.Tab(label="日志", value="logs"),
         ], style={"backgroundColor": "#16213e"}),
 
         # Tab content
@@ -58,7 +58,7 @@ def create_dashboard(backtest_engine=None, strategy_registry=None, market_overvi
             return _ai_tab()
         elif tab == "logs":
             return _logs_tab()
-        return html.Div("Unknown tab")
+        return html.Div("未知标签页")
 
     return app
 
@@ -90,20 +90,20 @@ def _empty_chart(title: str) -> go.Figure:
 
 def _overview_tab() -> html.Div:
     return html.Div([
-        html.Div([_card("Total Equity", "\xA50.00"), _card("Daily P&L", "+\xA50.00"),
-                   _card("Max Drawdown", "0.00%", "#ff4444"), _card("Sharpe", "0.00", "#4488ff")],
+        html.Div([_card("总权益", "\xA50.00"), _card("当日盈亏", "+\xA50.00"),
+                   _card("最大回撤", "0.00%", "#ff4444"), _card("夏普比率", "0.00", "#4488ff")],
                  style={"display": "grid", "gridTemplateColumns": "repeat(4,1fr)", "gap": "15px", "marginBottom": "15px"}),
-        _panel(dcc.Graph(id="equity-chart", figure=_empty_chart("Equity Curve"), style={"height": "350px"}), "Equity Curve"),
+        _panel(dcc.Graph(id="equity-chart", figure=_empty_chart("权益曲线"), style={"height": "350px"}), "权益曲线"),
         html.Div([
-            _panel(html.Div("No positions", id="positions-table"), "Positions"),
-            _panel(html.Div("No trades", id="trades-table"), "Recent Trades"),
+            _panel(html.Div("暂无持仓", id="positions-table"), "持仓"),
+            _panel(html.Div("暂无交易", id="trades-table"), "最近交易"),
         ], style={"display": "flex", "gap": "15px", "marginTop": "15px"}),
     ])
 
 
 def _strategies_tab() -> html.Div:
     return html.Div([
-        _panel(dcc.Graph(id="strategy-chart", figure=_empty_chart("Strategy Performance Comparison")), "Strategy Performance"),
+        _panel(dcc.Graph(id="strategy-chart", figure=_empty_chart("策略表现对比")), "策略表现"),
         html.Div(id="strategy-details", style={"marginTop": "15px"}),
     ])
 
@@ -111,36 +111,36 @@ def _strategies_tab() -> html.Div:
 def _backtest_tab() -> html.Div:
     return html.Div([
         _panel([
-            html.Label("Strategy"), dcc.Dropdown(
+            html.Label("策略"), dcc.Dropdown(
                 id="bt-strategy", options=[
                     {"label": s, "value": s} for s in
                     ["dual_thrust","turtle","bollinger","dual_ma","r_breaker","grid_ma"]
                 ], value="dual_thrust", style={"color": "#000"}),
-            html.Label("Symbol"), dcc.Input(id="bt-symbol", value="ETH/USDT", type="text"),
-            html.Label("Timeframe"), dcc.Dropdown(
+            html.Label("交易对"), dcc.Input(id="bt-symbol", value="ETH/USDT", type="text"),
+            html.Label("周期"), dcc.Dropdown(
                 id="bt-timeframe", options=[
                     {"label": f, "value": f} for f in ["5m","15m","1h","1d"]
                 ], value="1h", style={"color": "#000"}),
-            html.Label("Initial Capital"), dcc.Input(id="bt-capital", value=100000, type="number"),
-            html.Button("Run Backtest", id="run-bt-btn", style={"marginTop": "15px", "padding": "8px 20px"}),
-        ], "Backtest Configuration"),
+            html.Label("初始资金"), dcc.Input(id="bt-capital", value=100000, type="number"),
+            html.Button("运行回测", id="run-bt-btn", style={"marginTop": "15px", "padding": "8px 20px"}),
+        ], "回测配置"),
         html.Div(id="backtest-results", style={"marginTop": "15px"}),
     ])
 
 
 def _ai_tab() -> html.Div:
     return html.Div([
-        _panel(dcc.Graph(id="sentiment-chart", figure=_empty_chart("News Sentiment Timeline")), "AI News Sentiment"),
-        _panel(html.Div("No AI picks available. Start LLM service."), "AI Picks"),
-        _panel(html.Div("No active signals."), "Signal Recommendations"),
+        _panel(dcc.Graph(id="sentiment-chart", figure=_empty_chart("新闻情感时间线")), "AI新闻情感"),
+        _panel(html.Div("暂无AI推荐，请启动LLM服务。"), "AI推荐"),
+        _panel(html.Div("暂无活跃信号。"), "信号推荐"),
     ])
 
 
 def _logs_tab() -> html.Div:
     return html.Div([
-        _panel(html.Div("System logs...", style={
+        _panel(html.Div("系统日志...", style={
             "backgroundColor": "#111", "padding": "10px", "borderRadius": "5px",
             "fontFamily": "monospace", "fontSize": "12px", "maxHeight": "400px", "overflowY": "scroll",
-        }), "System Logs"),
-        _panel(html.Div("Trade records..."), "Trade History"),
+        }), "系统日志"),
+        _panel(html.Div("交易记录..."), "交易记录"),
     ])
