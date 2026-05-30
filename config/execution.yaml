@@ -8,7 +8,7 @@ execution:
     a_share:
       provider: qmt                # qmt | simulate
       # QMT client path
-      qmt_path: "C:\\国金证券QMT交易端\\userdata_mini"
+      qmt_path: 'C:\国金证券QMT交易端\userdata_mini'
     crypto:
       provider: ccxt               # ccxt | simulate
       # CCXT exchange (binance, okx, bybit, etc.)
