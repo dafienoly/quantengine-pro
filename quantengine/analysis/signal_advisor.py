@@ -3,317 +3,159 @@ QuantEngine Pro - Signal Advisor
 ==================================
 Combines strategy signals, technical patterns, and LLM analysis
 to generate actionable buy/sell recommendations.
-
-Each recommendation includes:
-- Symbol, direction, price, stop-loss, take-profit
-- Confidence score from signal strength + LLM reinforcement
-- Explanation of the reasoning behind the recommendation
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from typing import Dict, List, Optional
 
+import numpy as np
+import pandas as pd
 from loguru import logger
-
-
-class RecType(str, Enum):
-    """Recommendation type."""
-    STRONG_BUY = "STRONG_BUY"
-    BUY = "BUY"
-    HOLD = "HOLD"
-    SELL = "SELL"
-    STRONG_SELL = "STRONG_SELL"
 
 
 @dataclass
 class TradeRecommendation:
-    """A trading recommendation with full reasoning."""
-    timestamp: datetime
+    """A trading recommendation with stop-loss and take-profit."""
     symbol: str
-    type: RecType
+    direction: str          # BUY / SELL / HOLD
     price: float
     stop_loss: float
     take_profit: float
-    confidence: float  # 0.0 to 1.0
-    source: str        # Which component generated this
-    reasons: List[str] = field(default_factory=list)
-    risk_level: str = "medium"
-    metadata: Dict = field(default_factory=dict)
+    confidence: float       # 0.0 - 1.0
+    reasoning: str
+    strategy_source: str = ""
+    technical_signals: List[str] = field(default_factory=list)
+    llm_interpretation: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
 
 
 class SignalAdvisor:
     """
-    Trading signal advisor combining multiple analysis sources.
-
-    Integrates:
-    1. Strategy signals (from backtest/live strategies)
-    2. Technical pattern recognition
-    3. LLM analysis and explanation
-
-    Usage:
-        advisor = SignalAdvisor(llm_service)
-        rec = await advisor.evaluate(signal, market_data, news_context)
+    Buy/sell signal advisor combining strategy signals, technical patterns,
+    and optional LLM market interpretation.
     """
 
     def __init__(self, llm_service=None):
-        """
-        Initialize signal advisor.
-
-        Args:
-            llm_service: Optional LLM service for generating explanations
-        """
         self.llm_service = llm_service
 
-        # Technical patterns to detect
-        self.patterns = [
-            "golden_cross",      # Fast MA crosses above slow MA
-            "death_cross",       # Fast MA crosses below slow MA
-            "rsi_divergence",    # Price vs RSI divergence
-            "double_bottom",     # W-shaped reversal pattern
-            "double_top",        # M-shaped reversal pattern
-            "support_bounce",    # Price bouncing off support
-            "resistance_break",  # Price breaking resistance
-        ]
-
-    async def evaluate(
+    async def analyze(
         self,
-        signal,
-        market_data: Dict,
-        news_context: str = "",
-    ) -> TradeRecommendation:
+        symbol: str,
+        strategy_signals: List,
+        market_data: pd.DataFrame,
+        news_context: Optional[str] = None,
+    ) -> Optional[TradeRecommendation]:
         """
-        Evaluate a trading signal and generate a recommendation.
+        Generate trade recommendation for a symbol.
 
         Args:
-            signal: Strategy signal object
-            market_data: Recent market data for the symbol
-            news_context: Related news for LLM analysis
-
-        Returns:
-            TradeRecommendation with type, price levels, confidence, reasons
+            symbol: Trading symbol
+            strategy_signals: Recent signals from active strategies
+            market_data: OHLCV DataFrame
+            news_context: Optional news for LLM interpretation
         """
-        symbol = signal.symbol
-        current_price = signal.price or market_data.get("close", 0)
-        timestamp = signal.timestamp if hasattr(signal, "timestamp") else datetime.now()
+        if market_data.empty:
+            return None
 
-        # 1. Base recommendation from signal
-        rec_type = self._signal_to_rec_type(signal)
-        base_confidence = signal.confidence if hasattr(signal, "confidence") else 0.6
+        close = market_data["close"].values
+        high = market_data["high"].values if "high" in market_data.columns else close
+        low = market_data["low"].values if "low" in market_data.columns else close
+        current_price = float(close[-1])
 
-        # 2. Technical pattern detection
-        patterns_found = []
-        pattern_confidence = 0.0
+        technical_signals = []
+        reasoning = []
+        strategy_direction = None
+        strategy_confidence = 0.0
+        strategy_name = ""
 
-        if isinstance(market_data, dict) and "history" in market_data:
-            patterns_found = self._detect_patterns(market_data["history"])
-            if patterns_found:
-                pattern_confidence = 0.2 * len(patterns_found)
+        # 1. Strategy signals
+        if strategy_signals:
+            buys = [s for s in strategy_signals if hasattr(s, 'type') and s.type.value == "BUY"]
+            sells = [s for s in strategy_signals if hasattr(s, 'type') and s.type.value in ("SELL", "CLOSE")]
+            if buys:
+                strategy_direction = "BUY"
+                strategy_confidence = float(np.mean([s.confidence if hasattr(s, 'confidence') else 0.6 for s in buys]))
+                strategy_name = ", ".join(s.metadata.get("strategy_name", "") for s in buys if hasattr(s, 'metadata'))
+                reasoning.append(f"Strategy: {len(buys)} buy signals")
+            elif sells:
+                strategy_direction = "SELL"
+                strategy_confidence = float(np.mean([s.confidence if hasattr(s, 'confidence') else 0.6 for s in sells]))
+                reasoning.append(f"Strategy: {len(sells)} sell signals")
 
-        # 3. LLM analysis (if available)
-        llm_boost = 0.0
-        reasons = []
+        # 2. Technical patterns
+        if len(close) >= 60:
+            # RSI divergence
+            rsi = self._calc_rsi(close, 14)
+            prev_rsi = self._calc_rsi(close[:-1], 14)
+            if close[-1] < close[-6] and rsi > prev_rsi:
+                technical_signals.append("RSI底背离"); reasoning.append("RSI bullish divergence")
+            if close[-1] > close[-6] and rsi < prev_rsi:
+                technical_signals.append("RSI顶背离"); reasoning.append("RSI bearish divergence")
 
+            # MA cross
+            ma5, ma20 = np.mean(close[-5:]), np.mean(close[-20:])
+            prev_ma5, prev_ma20 = np.mean(close[-6:-1]), np.mean(close[-21:-1])
+            if prev_ma5 <= prev_ma20 and ma5 > ma20:
+                technical_signals.append("MA金叉"); reasoning.append("Golden cross MA5/20")
+                strategy_direction = strategy_direction or "BUY"
+            elif prev_ma5 >= prev_ma20 and ma5 < ma20:
+                technical_signals.append("MA死叉"); reasoning.append("Death cross MA5/20")
+                strategy_direction = strategy_direction or "SELL"
+
+        # 3. Stop-loss / Take-profit (ATR-based)
+        if len(close) >= 20:
+            atr = self._calc_atr(high, low, close, 14)
+            if strategy_direction == "BUY":
+                stop_loss = current_price - 2 * atr
+                take_profit = current_price + 3 * atr
+            elif strategy_direction == "SELL":
+                stop_loss = current_price + 2 * atr
+                take_profit = current_price - 3 * atr
+            else:
+                stop_loss = current_price * 0.95
+                take_profit = current_price * 1.05
+        else:
+            stop_loss, take_profit = current_price * 0.95, current_price * 1.05
+
+        # 4. LLM interpretation
+        llm_text = ""
         if self.llm_service and news_context:
             try:
-                analysis = await self.llm_service.analyze_symbol(
-                    symbol=symbol,
-                    technical_data=self._format_technical_data(market_data),
-                    news_context=news_context,
-                )
-
-                if analysis.sentiment == "bullish" and rec_type in (RecType.BUY, RecType.STRONG_BUY):
-                    llm_boost = 0.1
-                elif analysis.sentiment == "bearish" and rec_type in (RecType.SELL, RecType.STRONG_SELL):
-                    llm_boost = 0.1
-                elif analysis.sentiment != "neutral":
-                    llm_boost = -0.1  # LLM disagrees with signal
-
-                if analysis.summary:
-                    reasons.append(f"LLM: {analysis.summary}")
-
+                prompt = f"Briefly analyze impact of '{news_context[:200]}' on {symbol} at price {current_price}."
+                # Simple: use analyze_news interface
+                llm_result = await self.llm_service.analyze_news(f"{symbol}: {news_context[:500]}")
+                llm_text = llm_result.summary[:100] if llm_result.summary else ""
+                if llm_text: reasoning.append(f"AI: {llm_text[:80]}")
             except Exception as e:
-                logger.error(f"LLM analysis failed for {symbol}: {e}")
+                logger.warning(f"LLM interpretation failed: {e}")
 
-        # Add pattern-based reasons
-        for pattern in patterns_found:
-            reasons.append(f"Pattern: {pattern}")
+        if strategy_direction is None and not technical_signals:
+            direction, confidence = "HOLD", 0.3
+        else:
+            direction = strategy_direction or ("BUY" if len(technical_signals) > 1 else "HOLD")
+            confidence = strategy_confidence * 0.6 + min(len(technical_signals) / 5, 1.0) * 0.4
 
-        # 4. Calculate final confidence
-        final_confidence = min(
-            base_confidence + pattern_confidence + llm_boost,
-            0.95,
-        )
-
-        # 5. Calculate stop-loss and take-profit
-        stop_loss, take_profit = self._calculate_levels(
-            current_price, rec_type, market_data
-        )
-
-        # 6. Build recommendation
         return TradeRecommendation(
-            timestamp=timestamp,
-            symbol=symbol,
-            type=rec_type,
-            price=current_price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            confidence=final_confidence,
-            source="signal_advisor",
-            reasons=reasons,
-            risk_level=self._assess_risk(final_confidence, market_data),
-            metadata={
-                "signal_type": str(signal.type) if hasattr(signal, "type") else "",
-                "patterns": patterns_found,
-                "confidence_breakdown": {
-                    "signal": base_confidence,
-                    "patterns": pattern_confidence,
-                    "llm": llm_boost,
-                    "final": final_confidence,
-                },
-            },
+            symbol=symbol, direction=direction, price=current_price,
+            stop_loss=round(stop_loss, 2), take_profit=round(take_profit, 2),
+            confidence=round(min(confidence, 0.95), 2),
+            reasoning="; ".join(reasoning) if reasoning else "No clear signal",
+            strategy_source=strategy_name, technical_signals=technical_signals,
+            llm_interpretation=llm_text,
         )
-
-    def _signal_to_rec_type(self, signal) -> RecType:
-        """Map signal type to recommendation type."""
-        from quantengine.strategy.base import SignalType
-
-        sig_type = signal.type if hasattr(signal, "type") else None
-        confidence = signal.confidence if hasattr(signal, "confidence") else 0.5
-
-        if sig_type == SignalType.BUY:
-            return RecType.STRONG_BUY if confidence > 0.8 else RecType.BUY
-        elif sig_type in (SignalType.SELL, SignalType.CLOSE):
-            return RecType.STRONG_SELL if confidence > 0.8 else RecType.SELL
-        return RecType.HOLD
-
-    def _detect_patterns(self, history) -> List[str]:
-        """
-        Detect technical patterns in historical data.
-
-        Args:
-            history: DataFrame with OHLCV data
-
-        Returns:
-            List of detected pattern names
-        """
-        found = []
-
-        try:
-            import numpy as np
-            close = history["close"].values if hasattr(history, "values") else history
-
-            if len(close) < 20:
-                return found
-
-            # Golden cross: MA5 crosses above MA20
-            ma5 = np.mean(close[-5:])
-            ma20 = np.mean(close[-20:])
-            prev_ma5 = np.mean(close[-6:-1])
-            prev_ma20 = np.mean(close[-21:-1])
-
-            if prev_ma5 <= prev_ma20 and ma5 > ma20:
-                found.append("golden_cross")
-            elif prev_ma5 >= prev_ma20 and ma5 < ma20:
-                found.append("death_cross")
-
-            # Support bounce: price near N-day low and bouncing
-            period_low = np.min(close[-20:])
-            if close[-1] <= period_low * 1.02 and close[-1] > close[-2]:
-                found.append("support_bounce")
-
-            # Resistance break: price breaking above N-day high
-            period_high = np.max(close[-21:-1])
-            if close[-1] >= period_high:
-                found.append("resistance_break")
-
-        except Exception as e:
-            logger.debug(f"Pattern detection failed: {e}")
-
-        return found
-
-    def _calculate_levels(
-        self,
-        price: float,
-        rec_type: RecType,
-        market_data: Dict,
-    ) -> tuple:
-        """
-        Calculate stop-loss and take-profit levels.
-
-        Uses ATR-based levels with 2:1 reward-to-risk ratio.
-
-        Returns:
-            Tuple of (stop_loss, take_profit)
-        """
-        # Default: 2% stop, 4% target for long positions
-        if rec_type in (RecType.BUY, RecType.STRONG_BUY):
-            stop_loss = price * 0.98
-            take_profit = price * 1.04
-        elif rec_type in (RecType.SELL, RecType.STRONG_SELL):
-            stop_loss = price * 1.02
-            take_profit = price * 0.96
-        else:
-            stop_loss = price * 0.98
-            take_profit = price * 1.02
-
-        # Try to use ATR if available
-        try:
-            if isinstance(market_data, dict) and "history" in market_data:
-                hist = market_data["history"]
-                if hasattr(hist, "high") and len(hist) > 20:
-                    import numpy as np
-                    high = hist["high"].values[-20:]
-                    low = hist["low"].values[-20:]
-                    close = hist["close"].values[-20:]
-                    tr = np.maximum(
-                        high - low,
-                        np.maximum(
-                            np.abs(high - np.roll(close, 1)),
-                            np.abs(low - np.roll(close, 1)),
-                        ),
-                    )
-                    atr = np.mean(tr[-14:]) if len(tr) > 14 else np.mean(tr)
-
-                    if rec_type in (RecType.BUY, RecType.STRONG_BUY):
-                        stop_loss = price - 2 * atr
-                        take_profit = price + 4 * atr
-                    elif rec_type in (RecType.SELL, RecType.STRONG_SELL):
-                        stop_loss = price + 2 * atr
-                        take_profit = price - 4 * atr
-        except Exception:
-            pass
-
-        return (round(stop_loss, 2), round(take_profit, 2))
-
-    def _assess_risk(self, confidence: float, market_data: Dict) -> str:
-        """Assess risk level based on confidence and market conditions."""
-        if confidence > 0.8:
-            return "low"
-        elif confidence > 0.6:
-            return "medium"
-        else:
-            return "high"
 
     @staticmethod
-    def _format_technical_data(market_data: Dict) -> str:
-        """Format market data for LLM consumption."""
-        try:
-            hist = market_data.get("history")
-            if hist is None or len(hist) < 5:
-                return "Insufficient data"
+    def _calc_rsi(prices: np.ndarray, period: int = 14) -> float:
+        if len(prices) < period + 1: return 50.0
+        deltas = np.diff(prices[-period-1:])
+        gains, losses = np.maximum(deltas, 0), np.abs(np.minimum(deltas, 0))
+        avg_gain, avg_loss = np.mean(gains), np.mean(losses)
+        return 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
 
-            import numpy as np
-            close = hist["close"].values if hasattr(hist, "close") else hist
-            returns = np.diff(close[-20:]) / close[-21:-1] if len(close) > 20 else []
-
-            return (
-                f"Recent price: {close[-1]:.2f}\n"
-                f"5-day return: {(close[-1]/close[-5]-1)*100:.1f}%\n" if len(close) >= 5 else "" +
-                f"20-day return: {(close[-1]/close[-20]-1)*100:.1f}%\n" if len(close) >= 20 else "" +
-                f"Volatility (20d): {np.std(returns)*100:.1f}%\n" if len(returns) > 0 else "" +
-                f"MA20: {np.mean(close[-20:]):.2f}\n" if len(close) >= 20 else ""
-            )
-        except Exception:
-            return "Data formatting error"
+    @staticmethod
+    def _calc_atr(high, low, close, period: int = 14) -> float:
+        if len(close) < 2: return 0.0
+        prev_close = np.roll(close, 1); prev_close[0] = close[0]
+        tr = np.maximum(high - low, np.maximum(np.abs(high - prev_close), np.abs(low - prev_close)))
+        return float(np.mean(tr[-period:]))

@@ -6,8 +6,8 @@ Command-line interface for running backtests.
 
 Usage:
     python scripts/run_backtest.py --strategy dual_thrust --symbol ETH/USDT --timeframe 1h
-    python scripts/run_backtest.py --config config/strategies.yaml
-    python scripts/run_backtest.py --all  # Run all enabled strategies
+    python scripts/run_backtest.py --strategy turtle --symbol BTC/USDT --timeframe 1d
+    python scripts/run_backtest.py --strategy bollinger --symbol ETH/USDT --timeframe 15m
 """
 
 import argparse
@@ -20,10 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 
-from quantengine.config.manager import get_config
-from quantengine.data.cache import CacheManager
 from quantengine.data.ccxt_fetcher import CCXTQuoteFetcher
-from quantengine.strategy.registry import StrategyRegistry
 from quantengine.strategy.builtin.dual_thrust import DualThrustStrategy
 from quantengine.strategy.builtin.turtle import TurtleStrategy
 from quantengine.strategy.builtin.bollinger import BollingerStrategy
@@ -31,10 +28,7 @@ from quantengine.strategy.builtin.dual_ma import DualMAStrategy
 from quantengine.strategy.builtin.r_breaker import RBreakerStrategy
 from quantengine.strategy.builtin.grid_ma import GridMAStrategy
 from quantengine.backtest.engine import BacktestEngine
-from quantengine.backtest.cost_model import CostModel
 
-
-# Strategy factory: map names to classes
 STRATEGY_MAP = {
     "dual_thrust": DualThrustStrategy,
     "turtle": TurtleStrategy,
@@ -45,7 +39,7 @@ STRATEGY_MAP = {
 }
 
 
-async def run_single_backtest(
+async def run_backtest(
     strategy_name: str,
     symbol: str,
     timeframe: str = "1h",
@@ -54,21 +48,7 @@ async def run_single_backtest(
     exchange: str = "binance",
     params: dict = None,
 ) -> dict:
-    """
-    Run a single strategy backtest.
-
-    Args:
-        strategy_name: Name of strategy to test
-        symbol: Trading pair
-        timeframe: Bar frequency
-        initial_capital: Starting capital
-        market: 'crypto' or 'a_share'
-        exchange: Exchange name for data
-        params: Strategy parameter overrides
-
-    Returns:
-        Backtest report dict
-    """
+    """Run a single strategy backtest and return the report."""
     logger.info(f"Running backtest: {strategy_name} on {symbol} ({timeframe})")
 
     # 1. Fetch data
@@ -83,9 +63,9 @@ async def run_single_backtest(
 
     if df.empty:
         logger.error(f"No data for {symbol}")
-        return {"error": "No data"}
+        return {"error": "No data available"}
 
-    logger.info(f"Fetched {len(df)} bars: {df['timestamp'].iloc[0]} → {df['timestamp'].iloc[-1]}")
+    logger.info(f"Fetched {len(df)} bars: {df['timestamp'].iloc[0]} -> {df['timestamp'].iloc[-1]}")
 
     # 2. Create strategy
     strategy_cls = STRATEGY_MAP.get(strategy_name)
@@ -96,77 +76,33 @@ async def run_single_backtest(
     strategy = strategy_cls(params or {})
     strategy.name = strategy_name
 
-    # 3. Set up backtest engine
-    engine = BacktestEngine(
-        initial_capital=initial_capital,
-        market=market,
-    )
-    engine.add_strategy(
-        strategy=strategy,
-        symbols=[symbol],
-        weight=1.0,
-        timeframe=timeframe,
-    )
+    # 3. Setup engine
+    engine = BacktestEngine(initial_capital=initial_capital, market=market)
+    engine.add_strategy(strategy=strategy, symbols=[symbol], weight=1.0, timeframe=timeframe)
 
-    # 4. Run backtest
-    data = {symbol: df}
-    report = engine.run(data)
+    # 4. Run
+    report = engine.run({symbol: df})
 
-    # 5. Print results
+    # 5. Print summary
     print(engine.summary())
 
     return report
 
 
 async def main():
-    """Main entry point for backtest CLI."""
-    parser = argparse.ArgumentParser(
-        description="QuantEngine Pro - Backtest Runner"
-    )
-    parser.add_argument(
-        "--strategy",
-        choices=list(STRATEGY_MAP.keys()),
-        default="dual_thrust",
-        help="Strategy to backtest",
-    )
-    parser.add_argument(
-        "--symbol",
-        default="ETH/USDT",
-        help="Trading symbol",
-    )
-    parser.add_argument(
-        "--timeframe",
-        default="1h",
-        choices=["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
-        help="Bar frequency",
-    )
-    parser.add_argument(
-        "--capital",
-        type=float,
-        default=100000.0,
-        help="Initial capital",
-    )
-    parser.add_argument(
-        "--market",
-        choices=["crypto", "a_share"],
-        default="crypto",
-        help="Market type",
-    )
-    parser.add_argument(
-        "--exchange",
-        default="binance",
-        help="Exchange for crypto data",
-    )
-
+    parser = argparse.ArgumentParser(description="QuantEngine Pro - Backtest Runner")
+    parser.add_argument("--strategy", choices=list(STRATEGY_MAP.keys()), default="dual_thrust")
+    parser.add_argument("--symbol", default="ETH/USDT")
+    parser.add_argument("--timeframe", default="1h", choices=["1m","5m","15m","30m","1h","4h","1d"])
+    parser.add_argument("--capital", type=float, default=100000.0)
+    parser.add_argument("--market", choices=["crypto","a_share"], default="crypto")
+    parser.add_argument("--exchange", default="binance")
     args = parser.parse_args()
 
-    report = await run_single_backtest(
-        strategy_name=args.strategy,
-        symbol=args.symbol,
-        timeframe=args.timeframe,
-        initial_capital=args.capital,
-        market=args.market,
-        exchange=args.exchange,
+    report = await run_backtest(
+        strategy_name=args.strategy, symbol=args.symbol,
+        timeframe=args.timeframe, initial_capital=args.capital,
+        market=args.market, exchange=args.exchange,
     )
 
     if report and "error" not in report:
