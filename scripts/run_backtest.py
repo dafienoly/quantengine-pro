@@ -27,6 +27,8 @@ from quantengine.strategy.builtin.bollinger import BollingerStrategy
 from quantengine.strategy.builtin.dual_ma import DualMAStrategy
 from quantengine.strategy.builtin.r_breaker import RBreakerStrategy
 from quantengine.strategy.builtin.grid_ma import GridMAStrategy
+from quantengine.strategy.builtin.panic_reversal import PanicReversalStrategy
+from quantengine.strategy.builtin.low_vol_defense import LowVolDefenseStrategy
 from quantengine.backtest.engine import BacktestEngine
 
 STRATEGY_MAP = {
@@ -36,6 +38,8 @@ STRATEGY_MAP = {
     "dual_ma": DualMAStrategy,
     "r_breaker": RBreakerStrategy,
     "grid_ma": GridMAStrategy,
+    "panic_reversal": PanicReversalStrategy,
+    "low_vol_defense": LowVolDefenseStrategy,
 }
 
 

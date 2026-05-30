@@ -127,3 +127,35 @@ strategies:
     timeframe: "tick"
     weight: 0.3
     enabled: false
+
+  # ---- Composite: Panic Reversal ----
+  - name: "panic_reversal_eth"
+    class: "quantengine.strategy.builtin.panic_reversal.PanicReversalStrategy"
+    params:
+      panic_threshold: -0.05
+      volume_multiplier: 2.0
+      stabilization_bars: 5
+      rsi_recovery_threshold: 40
+      target_recovery_pct: 0.03
+      stop_loss_pct: 0.02
+      lookback_bars: 50
+    symbols: ["ETH/USDT"]
+    timeframe: "15m"
+    weight: 0.5
+    enabled: true
+
+  # ---- Composite: Low Vol Defense ----
+  - name: "low_vol_defense_btc"
+    class: "quantengine.strategy.builtin.low_vol_defense.LowVolDefenseStrategy"
+    params:
+      vol_lookback: 20
+      vol_percentile_threshold: 0.80
+      defense_position_pct: 0.25
+      low_vol_rank_period: 60
+      rebalance_freq: 20
+      min_position_pct: 0.10
+      max_position_pct: 0.50
+    symbols: ["BTC/USDT"]
+    timeframe: "1h"
+    weight: 0.5
+    enabled: true
