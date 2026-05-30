@@ -196,7 +196,7 @@ def test_imports():
     # Web layer
     from quantengine.web.api import create_app
     app = create_app()
-    assert app.title == "QuantEngine Pro API"
+    assert app.title == "量化引擎专业版 API"
     print("  ✓ web.api")
 
     print("\n✓ ALL SMOKE TESTS PASSED\n")
