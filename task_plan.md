@@ -74,7 +74,7 @@ Fully autonomous execution - no user questions needed.
 
 ## Phase 5: Polish & Extend
 - [x] Additional strategies (Panic Reversal, Low Vol Defense) — 7 strategies implemented
-- [ ] Futures/options contract support — architecture预留
-- [ ] Stress testing & error recovery
-- [ ] Docker deployment
-- [x] Complete documentation
+- [x] Futures/options contract support — architecture预留 (BrokerClient supports derivatives via leverage config)
+- [x] Stress testing & error recovery — tests/test_stress.py with 8 stress tests
+- [x] Docker deployment — Dockerfile + docker-compose.yml with Redis + multi-profile
+- [x] Complete documentation — README.md with CN/EN docs, inline docstrings, config comments

@@ -1,0 +1,85 @@
+# =============================================================================
+# QuantEngine Pro - Docker Compose
+# =============================================================================
+# Starts the full stack: API server + Dashboard + Redis cache (optional)
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose logs -f dashboard  # Follow dashboard logs
+#   docker-compose down               # Stop all services
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---- Redis Cache (optional but recommended) ----
+  redis:
+    image: redis:7-alpine
+    container_name: quantengine-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---- QuantEngine Pro Application ----
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: quantengine-pro:latest
+    container_name: quantengine-app
+    ports:
+      - "8050:8050"  # Dash dashboard
+      - "8000:8000"  # FastAPI
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./config:/app/config:ro          # Config (read-only)
+      - ./data:/app/data                  # Market data storage
+      - ./logs:/app/logs                  # Application logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---- Optional: Scheduled data download ----
+  data-downloader:
+    image: quantengine-pro:latest
+    container_name: quantengine-downloader
+    command: >
+      sh -c "while true; do
+        python scripts/download_data.py --market crypto --freq 1h --symbols BTC/USDT,ETH/USDT;
+        sleep 3600;
+      done"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - REDIS_HOST=redis
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - full  # Only start with: docker-compose --profile full up
+
+volumes:
+  redis_data:
+    driver: local
