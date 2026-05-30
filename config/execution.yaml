@@ -1,0 +1,57 @@
+# =============================================================================
+# QuantEngine Pro - Execution Configuration
+# =============================================================================
+
+execution:
+  # ---- Broker Selection ----
+  broker:
+    a_share:
+      provider: qmt                # qmt | simulate
+      # QMT client path
+      qmt_path: "C:\\国金证券QMT交易端\\userdata_mini"
+    crypto:
+      provider: ccxt               # ccxt | simulate
+      # CCXT exchange (binance, okx, bybit, etc.)
+      exchange: "binance"
+      testnet: true                # Use testnet for development
+
+  # ---- Execution Loop ----
+  loop:
+    scan_interval_seconds: 10      # Scan symbols every 10 seconds
+    order_timeout_seconds: 30      # Cancel and retry after 30s
+    max_retry_attempts: 3          # Max order retry attempts
+
+  # ---- Cost Model (for simulation & backtest) ----
+  costs:
+    a_share:
+      commission_rate: 0.00025     # 0.025% commission
+      min_commission: 5.0          # Min 5 yuan per trade
+      stamp_tax_rate: 0.001        # 0.1% stamp tax (sell only)
+      slippage_model: "fixed"      # fixed | proportional | volume
+      slippage_value: 0.001        # 0.1% slippage
+    crypto:
+      maker_fee: 0.0002            # 0.02% maker
+      taker_fee: 0.0004            # 0.04% taker
+      slippage_model: "proportional"
+      slippage_value: 0.0005       # 0.05% slippage
+
+  # ---- Notifications ----
+  notifications:
+    enabled: true
+    channels:
+      - type: log                  # Always log reports
+      # - type: email
+      #   smtp_host: "smtp.gmail.com"
+      #   smtp_port: 587
+      #   from: "alerts@quantengine.pro"
+      #   to: ["trader@example.com"]
+      # - type: dingtalk
+      #   webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+      # - type: wechat
+      #   webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
+
+  # ---- Daily Report ----
+  daily_report:
+    generate_at: "15:30"           # Generate after market close
+    include_charts: true
+    language: "zh"                 # Chinese report

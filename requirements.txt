@@ -1,0 +1,42 @@
+# QuantEngine Pro Dependencies
+# Core
+pyyaml>=6.0
+pandas>=2.0
+numpy>=1.24
+
+# Data & Cache
+redis>=5.0
+pyarrow>=14.0
+fastparquet>=2024.2
+akshare>=1.12
+ccxt>=4.0
+
+# Web & API
+fastapi>=0.109
+uvicorn>=0.27
+plotly>=5.18
+dash>=2.14
+websockets>=12.0
+python-multipart>=0.0.9
+jinja2>=3.1
+
+# LLM
+openai>=1.0
+
+# HTTP & Parsing
+aiohttp>=3.9
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.1
+
+# Optimization
+optuna>=3.5
+
+# Logging
+loguru>=0.7
+
+# Data validation
+pydantic>=2.0
+
+# Visualization
+matplotlib>=3.8

@@ -1,0 +1,129 @@
+# =============================================================================
+# QuantEngine Pro - Strategy Configuration
+# =============================================================================
+# Each strategy entry specifies:
+#   name:        Unique strategy identifier
+#   class:       Python import path to strategy class
+#   params:      Strategy-specific parameters
+#   symbols:     Trading symbols this strategy monitors
+#   timeframe:   Bar frequency (1m, 5m, 15m, 1h, 1d, etc.)
+#   weight:      Capital allocation weight (1.0 = full allocation)
+#   enabled:     Whether this strategy is active
+# =============================================================================
+
+strategies:
+  # ---- Breakout Strategies ----
+  - name: "dual_thrust_eth"
+    class: "quantengine.strategy.builtin.dual_thrust.DualThrustStrategy"
+    params:
+      k1: 0.7
+      k2: 0.7
+      period: 20
+    symbols: ["ETH/USDT"]
+    timeframe: "5m"
+    weight: 1.0
+    enabled: true
+
+  - name: "r_breaker_btc"
+    class: "quantengine.strategy.builtin.r_breaker.RBreakerStrategy"
+    params:
+      f1: 0.35
+      f2: 0.07
+      f3: 0.25
+    symbols: ["BTC/USDT"]
+    timeframe: "5m"
+    weight: 1.0
+    enabled: true
+
+  - name: "turtle_eth"
+    class: "quantengine.strategy.builtin.turtle.TurtleStrategy"
+    params:
+      entry_period: 20
+      exit_period: 10
+      atr_period: 20
+      atr_multiplier: 2.0
+    symbols: ["ETH/USDT"]
+    timeframe: "1h"
+    weight: 1.0
+    enabled: true
+
+  # ---- Trend Following ----
+  - name: "dual_ma_btc"
+    class: "quantengine.strategy.builtin.dual_ma.DualMAStrategy"
+    params:
+      fast_period: 20
+      slow_period: 60
+      grid_spacing: 0.02
+      grid_levels: 5
+    symbols: ["BTC/USDT"]
+    timeframe: "1h"
+    weight: 0.5
+    enabled: true
+
+  # ---- Mean Reversion ----
+  - name: "bollinger_eth"
+    class: "quantengine.strategy.builtin.bollinger.BollingerStrategy"
+    params:
+      period: 20
+      num_std: 2.0
+      rsi_period: 14
+      rsi_oversold: 30
+      rsi_overbought: 70
+    symbols: ["ETH/USDT"]
+    timeframe: "15m"
+    weight: 1.0
+    enabled: true
+
+  # ---- Multi-Factor ----
+  - name: "multi_factor_a_share"
+    class: "quantengine.strategy.builtin.multi_factor.MultiFactorStrategy"
+    params:
+      factors: ["momentum_20", "volatility_20", "volume_ratio", "rsi_14"]
+      top_n: 10
+      rebalance_freq: "monthly"
+    symbols: []                   # Scans all A-share stocks
+    timeframe: "1d"
+    weight: 1.0
+    enabled: false                # Requires A-share data
+
+  # ---- Sector Rotation ----
+  - name: "sector_rotation"
+    class: "quantengine.strategy.builtin.sector_rotation.SectorRotationStrategy"
+    params:
+      momentum_period: 60
+      top_sectors: 3
+      etf_only: true
+    symbols:
+      - "510050"    # SSE 50 ETF
+      - "510300"    # CSI 300 ETF
+      - "510500"    # CSI 500 ETF
+      - "159915"    # ChiNext ETF
+    timeframe: "1d"
+    weight: 1.0
+    enabled: false
+
+  # ---- Composite Strategies ----
+  - name: "grid_ma_eth"
+    class: "quantengine.strategy.builtin.grid_ma.GridMAStrategy"
+    params:
+      ma_period: 50
+      grid_levels: 10
+      grid_spacing: 0.01
+      base_position_pct: 0.5
+    symbols: ["ETH/USDT"]
+    timeframe: "15m"
+    weight: 0.5
+    enabled: true
+
+  # ---- Market Making (Experimental) ----
+  - name: "simple_mm_eth"
+    class: "quantengine.strategy.builtin.simple_mm.SimpleMarketMaker"
+    params:
+      spread_pct: 0.001
+      order_size: 0.01
+      max_position: 1.0
+      cancel_replace_seconds: 30
+    symbols: ["ETH/USDT"]
+    timeframe: "tick"
+    weight: 0.3
+    enabled: false

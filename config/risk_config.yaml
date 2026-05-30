@@ -1,0 +1,35 @@
+# =============================================================================
+# QuantEngine Pro - Risk Management Configuration
+# =============================================================================
+
+risk:
+  # ---- Position Limits ----
+  position:
+    max_single_symbol_pct: 0.20      # Max 20% in one symbol
+    max_total_position_pct: 0.95     # Max 95% total allocation
+    max_leverage: 3.0                # Maximum leverage (contracts)
+
+  # ---- Daily Loss Limits ----
+  daily_loss:
+    max_loss_pct: 0.05               # 5% daily loss triggers pause
+    consecutive_loss_trades: 5       # 5 consecutive losses = circuit breaker
+    circuit_breaker_duration_hours: 24 # Lock period after breaker
+
+  # ---- Margin Requirements ----
+  margin:
+    initial_margin_pct: 1.0          # Full margin for spot
+    maintenance_margin_pct: 1.3      # 130% maintenance margin
+    force_liquidation_pct: 1.1       # Liquidate below 110%
+
+  # ---- Blacklist ----
+  blacklist:
+    filter_st: true                  # Filter ST (Special Treatment) stocks
+    min_daily_volume_yuan: 10000000  # Min daily turnover: 10M yuan
+    max_abnormal_volatility: 3.0     # Max 3x normal volatility
+    exclude_suspend: true            # Exclude suspended stocks
+
+  # ---- Order Safety ----
+  order:
+    max_order_value_pct: 0.10        # Max 10% of portfolio per order
+    require_stop_loss: true          # Every order must have stop loss
+    max_slippage_pct: 0.02           # Max 2% slippage tolerance

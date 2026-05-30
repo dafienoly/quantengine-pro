@@ -1,0 +1,55 @@
+# =============================================================================
+# QuantEngine Pro - Data Source Configuration
+# =============================================================================
+# Provider options:
+#   quote: akshare | qmt | tushare_pro
+#   market_flow: eastmoney | wind
+#   news: cailian | sina | cryptopanic | tushare_news | bloomberg
+# =============================================================================
+
+data:
+  # ---- Market Data (K-line, Tick, Real-time) ----
+  quote:
+    provider: akshare            # Free A-share data
+    cache_enabled: true
+    cache_ttl_seconds: 3600     # 1 hour for real-time quotes
+    rate_limit_per_minute: 30   # Respect free API limits
+
+  # ---- Market Breadth / Fund Flow ----
+  market_flow:
+    provider: eastmoney          # Free EastMoney web API
+    cache_enabled: true
+    cache_ttl_seconds: 60       # 60 seconds for market data
+
+  # ---- News / Sentiment ----
+  news:
+    provider: cailian            # Cailian Press RSS (free)
+    cache_enabled: true
+    cache_ttl_seconds: 3600     # 1 hour for news
+    secondary_providers:        # Fallback sources
+      - sina
+      - cryptopanic
+
+  # ---- Storage ----
+  storage:
+    parquet_path: "./data/parquet"       # Cold storage path
+    redis_host: "localhost"
+    redis_port: 6379
+    redis_db: 0
+    memory_cache_size: 1000             # LRU cache entries
+
+  # ---- Data Download Defaults ----
+  download:
+    a_share:
+      freq: "D"                 # Daily K-line
+      start_date: "20200101"
+      auto_update: true
+    crypto:
+      symbols:
+        - "BTC/USDT"
+        - "ETH/USDT"
+      timeframes:
+        - "5m"
+        - "1h"
+        - "1d"
+      start_date: "20220101"
