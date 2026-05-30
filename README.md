@@ -87,42 +87,53 @@ DEEPSEEK_API_KEY=sk-your-key-here
 
 适合策略研发、回测验证、快速调试。
 
-#### 1. 创建虚拟环境
+#### 一键安装（推荐）
+
+项目根目录下有一键安装脚本 `setup.py`，自动完成创建虚拟环境、安装依赖、运行测试：
 
 ```bash
-# 创建 venv（Windows / Linux / macOS 通用）
+# 完整安装（含 akshare、ccxt 等，预计 2-5 分钟）
+python setup.py
+
+# 最小安装（仅核心依赖，仅加密货币场景）
+python setup.py --minimal
+
+# 跳过测试（快速部署，后续再验证）
+python setup.py --skip-test
+```
+
+**Windows PowerShell** 中直接运行：
+
+```powershell
+python setup.py
+```
+
+**Linux / macOS** 同样：
+
+```bash
+python3 setup.py
+```
+
+#### 分步安装（可选）
+
+如需手动控制每一步：
+
+```bash
+# 1. 创建虚拟环境
 python -m venv venv
 
-# Windows: 激活
+# 2. 激活
+# Windows:
 venv\Scripts\activate
-
-# Linux / macOS: 激活
+# Linux / macOS:
 source venv/bin/activate
-```
 
-#### 2. 安装依赖
-
-```bash
-# 完整安装（含 akshare、ccxt 等，耗时较长）
+# 3. 安装依赖
 pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov
+pip install pytest pytest-asyncio pytest-cov black ruff
 
-# 或通过 Makefile 一键安装
-make install
-```
-
-> **💡 最小安装**：若仅使用加密货币功能，可跳过 akshare 等 A股依赖：
-> ```bash
-> make install-minimal
-> ```
-
-#### 3. 验证环境
-
-```bash
-# 运行全部测试
-make test
-
-# 预期输出：12 passed in ~13s
+# 4. 验证
+python -m pytest tests/ -v --tb=short
 ```
 
 #### 4. 下载数据
