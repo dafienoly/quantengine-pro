@@ -6,9 +6,12 @@ QuantEngine Pro — 一键安装脚本
 支持 Windows / Linux / macOS。
 
 用法:
-    python setup.py             完整安装（含 akshare, ccxt 等）
-    python setup.py --minimal   仅安装核心依赖（不含 akshare, ccxt）
-    python setup.py --skip-test 跳过安装后的测试验证
+    python setup.py                         完整安装（默认使用清华镜像）
+    python setup.py --minimal               仅安装核心依赖（不含 akshare, ccxt）
+    python setup.py --skip-test             跳过安装后的测试验证
+    python setup.py --mirror aliyun         切换镜像源（tsinghua/aliyun/tencent/ustc/douban）
+    python setup.py --mirror https://xxx    自定义镜像 URL
+    python setup.py --no-mirror             直连 pypi.org（海外用户）
 """
 
 import argparse
@@ -25,6 +28,18 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 VENV_DIR = PROJECT_ROOT / "venv"
 REQUIREMENTS = PROJECT_ROOT / "requirements.txt"
+
+# PyPI 镜像源（国内用户可切换至清华/Tencent/阿里云加速）
+# 完整列表: https://mirrors.tuna.tsinghua.edu.cn/help/pypi/
+MIRRORS = {
+    "tsinghua": "https://pypi.tuna.tsinghua.edu.cn/simple",
+    "aliyun":   "https://mirrors.aliyun.com/pypi/simple/",
+    "tencent":  "https://mirrors.cloud.tencent.com/pypi/simple",
+    "ustc":     "https://pypi.mirrors.ustc.edu.cn/simple/",
+    "douban":   "https://pypi.doubanio.com/simple/",
+    "pypi":     "https://pypi.org/simple",
+}
+DEFAULT_MIRROR = "tsinghua"
 
 DEV_PACKAGES = [
     "pytest",
@@ -110,6 +125,32 @@ def venv_activate() -> str:
     return f"source {VENV_DIR / 'bin' / 'activate'}"
 
 
+# ── pip 镜像助手 ──────────────────────────────────────────────────────────
+
+_pip_mirror_url: str | None = None
+
+def set_mirror(name: str):
+    """Set PyPI mirror by name or URL."""
+    global _pip_mirror_url
+    if name in MIRRORS:
+        _pip_mirror_url = MIRRORS[name]
+        info(f"PyPI 镜像源: {name} ({_pip_mirror_url})")
+    elif name.startswith("http://") or name.startswith("https://"):
+        _pip_mirror_url = name
+        info(f"PyPI 镜像源: {name}")
+    else:
+        known = ", ".join(MIRRORS.keys())
+        warn(f"未知镜像 '{name}'，可选: {known}；使用默认")
+        _pip_mirror_url = MIRRORS[DEFAULT_MIRROR]
+
+
+def pip_args() -> list[str]:
+    """Return ['-i', '<mirror-url>'] if a mirror is configured, else empty list."""
+    if _pip_mirror_url:
+        return ["-i", _pip_mirror_url]
+    return []
+
+
 # ── 步骤函数 ──────────────────────────────────────────────────────────────
 
 def banner():
@@ -137,7 +178,7 @@ def step_upgrade_pip():
     """Upgrade pip inside venv."""
     info("正在升级 pip...")
     subprocess.run(
-        [str(venv_python()), "-m", "pip", "install", "--upgrade", "pip"],
+        [str(venv_python()), "-m", "pip", "install", "--upgrade", "pip"] + pip_args(),
         check=True, capture_output=True,
     )
     ok("pip 已升级")
@@ -148,14 +189,14 @@ def step_install_deps(minimal: bool = False):
     if not minimal and REQUIREMENTS.exists():
         info("正在安装项目依赖（完整安装，预计 2-5 分钟）...")
         subprocess.run(
-            [str(venv_pip()), "install", "-r", str(REQUIREMENTS)],
+            [str(venv_pip()), "install", "-r", str(REQUIREMENTS)] + pip_args(),
             check=True,
         )
         ok("项目依赖安装完成")
     elif minimal:
         info("正在安装核心依赖（最小安装）...")
         subprocess.run(
-            [str(venv_pip()), "install"] + CORE_PACKAGES,
+            [str(venv_pip()), "install"] + CORE_PACKAGES + pip_args(),
             check=True,
         )
         ok("核心依赖安装完成")
@@ -167,7 +208,7 @@ def step_install_dev():
     """Install development tools (pytest, ruff, black)."""
     info("正在安装开发工具（pytest, ruff, black）...")
     subprocess.run(
-        [str(venv_pip()), "install"] + DEV_PACKAGES,
+        [str(venv_pip()), "install"] + DEV_PACKAGES + pip_args(),
         check=True,
     )
     ok("开发工具安装完成")
@@ -254,6 +295,18 @@ def main():
         "--skip-test", action="store_true",
         help="跳过安装后的测试验证",
     )
+    parser.add_argument(
+        "--mirror", type=str, default=DEFAULT_MIRROR, nargs="?",
+        help=(
+            f"PyPI 镜像源名称或 URL（默认: {DEFAULT_MIRROR}）。"
+            f"内置镜像: {', '.join(MIRRORS.keys())}。"
+            "使用 --no-mirror 禁用镜像直连 pypi.org"
+        ),
+    )
+    parser.add_argument(
+        "--no-mirror", dest="mirror", action="store_const", const=None,
+        help="禁用镜像源，直连 pypi.org",
+    )
     args = parser.parse_args()
 
     banner()
@@ -265,6 +318,12 @@ def main():
     # 检测项目目录
     os.chdir(PROJECT_ROOT)
     info(f"项目目录: {PROJECT_ROOT}")
+
+    # 设置镜像源
+    if args.mirror:
+        set_mirror(args.mirror)
+    else:
+        info("直连 pypi.org（未使用镜像）")
 
     print()
     print(style("  ── 第一步：创建虚拟环境 ──", "bold"))
