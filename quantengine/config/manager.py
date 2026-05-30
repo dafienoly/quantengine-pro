@@ -151,6 +151,14 @@ class ConfigManager:
             remaining = parts[1:]
 
         current = config
+
+        # Auto-unwrap: if the config file's top-level key matches
+        # the stripped shorthand, step into it automatically
+        if isinstance(current, dict) and len(current) == 1:
+            only_key = next(iter(current))
+            if only_key == parts[0]:
+                current = current[only_key]
+
         for part in remaining:
             if isinstance(current, dict) and part in current:
                 current = current[part]

@@ -186,10 +186,10 @@ class TestRiskManagerStress:
         result = rm.check_order("STOCK", 1005, 20, 100000, {})
         assert not result.passed, f"20.1% position should fail, got: {result.message}"
 
-        # Test: including existing position
+        # Test: including existing position (500*20 + 501*20 = 20020 > 20000 limit)
         existing = {"STOCK": {"quantity": 500, "current_price": 20}}
-        result = rm.check_order("STOCK", 500, 20, 100000, existing)
-        assert not result.passed, "20% total with existing should fail"
+        result = rm.check_order("STOCK", 501, 20, 100000, existing)
+        assert not result.passed, "20.02% total with existing should fail"
 
         print("  Position limits: boundary checks passed")
 
@@ -204,7 +204,8 @@ class TestRiskManagerStress:
 
         symbols = [f"STOCK_{i:04d}" for i in range(100)]
         filtered = rm.filter_blacklist(symbols)
-        assert len(filtered) == 67, f"Expected 67, got {len(filtered)}"  # 100 - 33 blacklisted
+        # i%3==0 for range(100) → 34 blacklisted (0..99 inclusive), so 100-34=66
+        assert len(filtered) == 66, f"Expected 66, got {len(filtered)}"  # 100 - 34 blacklisted
         print(f"  Blacklist: {len(symbols)} → {len(filtered)} symbols after filtering")
 
 

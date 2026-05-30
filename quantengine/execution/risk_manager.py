@@ -194,7 +194,7 @@ class RiskManager:
                 hours=self.circuit_breaker_hours
             )
             logger.error(
-                f"CIRCUIT BREAKER: {self.consecutive_losses} consecutive losses. "
+                f"CIRCUIT BREAKER: {self._consecutive_losses} consecutive losses. "
                 f"Trading paused until {self._circuit_breaker_until}"
             )
 

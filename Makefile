@@ -1,7 +1,7 @@
 # =============================================================================
 # QuantEngine Pro - Makefile
 # =============================================================================
-# Common development and deployment commands.
+# Cross-platform (Windows / Linux / macOS)
 #
 # Usage:
 #   make install      - Set up dev environment
@@ -16,13 +16,25 @@
 
 .PHONY: help install test backtest dashboard docker-build docker-up docker-down lint clean
 
-PYTHON := python3
-VENV := venv
-PIP := $(VENV)/bin/pip
-PYTEST := $(VENV)/bin/pytest
-RUFF := $(VENV)/bin/ruff
+# ---- Platform detection ----
+ifeq ($(OS),Windows_NT)
+    PYTHON := python
+    VENV_PY := $(VENV)\Scripts\python
+    VENV_ACTIVATE := $(VENV)\Scripts\activate
+    SEP := \\
+else
+    PYTHON := python3
+    VENV_PY := $(VENV)/bin/python
+    VENV_ACTIVATE := $(VENV)/bin/activate
+    SEP := /
+endif
 
-# ---- Colors ----
+VENV := venv
+PIP := $(PYTHON) -m pip
+PYTEST := $(PYTHON) -m pytest
+RUFF := $(PYTHON) -m ruff
+
+# ---- Colors (ANSI escape) ----
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 RED := \033[0;31m
@@ -36,20 +48,22 @@ help: ## Show this help
 # Development Setup
 # =============================================================================
 
-$(VENV)/bin/activate:
+$(VENV)$(SEP)Scripts$(SEP)activate: $(VENV)$(SEP)pyvenv.cfg
+$(VENV)/bin/activate: $(VENV)/pyvenv.cfg
+$(VENV)/pyvenv.cfg:
 	@echo "$(YELLOW)Creating virtual environment...$(NC)"
 	$(PYTHON) -m venv $(VENV)
 	@echo "$(GREEN)Virtual environment created$(NC)"
 
-install: $(VENV)/bin/activate ## Install all dependencies for development
+install: $(VENV)/pyvenv.cfg ## Install all dependencies for development
 	@echo "$(YELLOW)Installing dependencies...$(NC)"
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 	$(PIP) install pytest pytest-asyncio pytest-cov black ruff
 	@echo "$(GREEN)Installation complete!$(NC)"
-	@echo "Run: source $(VENV)/bin/activate"
+	@echo "Activate: $(VENV_ACTIVATE)"
 
-install-minimal: $(VENV)/bin/activate ## Install only core deps (no akshare, ccxt)
+install-minimal: $(VENV)/pyvenv.cfg ## Install only core deps (no akshare, ccxt)
 	@echo "$(YELLOW)Installing minimal dependencies...$(NC)"
 	$(PIP) install --upgrade pip
 	$(PIP) install pandas numpy pyyaml loguru pydantic pyarrow fastparquet \
@@ -163,15 +177,14 @@ check: ## Run all checks (lint + type check)
 
 clean: ## Clean build artifacts
 	@echo "$(YELLOW)Cleaning...$(NC)"
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	$(PYTHON) -c "import shutil, pathlib; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('__pycache__') if p.is_dir()]"
+	$(PYTHON) -c "import shutil, pathlib; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('*.egg-info') if p.is_dir()]"
+	$(PYTHON) -c "import shutil, pathlib; [shutil.rmtree(p) for p in [pathlib.Path('.pytest_cache'), pathlib.Path('.mypy_cache'), pathlib.Path('.ruff_cache')] if p.exists()]"
+	$(PYTHON) -c "[p.unlink() for p in pathlib.Path('.').rglob('*.pyc')]"
 	@echo "$(GREEN)Clean complete$(NC)"
 
 clean-all: clean ## Clean everything including venv and data
-	rm -rf $(VENV)
-	rm -rf data/parquet/*
-	rm -rf logs/*
+	$(PYTHON) -c "import shutil, pathlib; shutil.rmtree('$(VENV)', ignore_errors=True)"
+	$(PYTHON) -c "import shutil, pathlib; shutil.rmtree('data/parquet', ignore_errors=True); pathlib.Path('data/parquet').mkdir(parents=True, exist_ok=True)"
+	$(PYTHON) -c "import pathlib; [p.unlink() for p in pathlib.Path('logs').iterdir() if p.is_file()]"
 	@echo "$(GREEN)Deep clean complete$(NC)"

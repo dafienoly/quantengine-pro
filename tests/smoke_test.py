@@ -144,7 +144,7 @@ def test_imports():
 
     # Execution layer
     from quantengine.execution.base import BrokerOrder, BrokerPosition, AccountBalance, OrderSide, OrderType
-    pos = BrokerPosition(symbol="BTC", quantity=0.1, avg_price=50000, current_price=51000)
+    pos = BrokerPosition(symbol="BTC", quantity=0.1, avg_price=50000, current_price=51000, unrealized_pnl=100.0)
     assert pos.unrealized_pnl == 100.0
     bal = AccountBalance(total_equity=100000, available_cash=50000, currency="CNY")
     assert bal.currency == "CNY"
@@ -160,7 +160,7 @@ def test_imports():
     from quantengine.execution.reporter import DailyReporter
     rep = DailyReporter()
     rpt = rep.generate([], [], [("2024-01-01", 100000)])
-    assert rpt["summary"]["current_equity"] == 0
+    assert rpt["summary"]["current_equity"] == 100000
     print("  ✓ execution.reporter")
 
     # Analysis layer

@@ -1,18 +1,16 @@
 # =============================================================================
-# QuantEngine Pro - Docker Compose
+# QuantEngine Pro - Production Docker Compose
 # =============================================================================
-# Starts the full stack: API server + Dashboard + Redis cache (optional)
 #
 # Usage:
-#   docker-compose up -d              # Start all services
-#   docker-compose logs -f dashboard  # Follow dashboard logs
-#   docker-compose down               # Stop all services
+#   docker compose up -d              # Start all services
+#   docker compose logs -f app        # Follow app logs
+#   docker compose down               # Stop all services
+#   docker compose --profile full up  # Include data downloader
 # =============================================================================
 
-version: "3.8"
-
 services:
-  # ---- Redis Cache (optional but recommended) ----
+  # ---- Redis Cache ----
   redis:
     image: redis:7-alpine
     container_name: quantengine-redis
@@ -27,6 +25,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    networks:
+      - quantengine-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- QuantEngine Pro Application ----
   app:
@@ -39,7 +44,8 @@ services:
       - "8050:8050"  # Dash dashboard
       - "8000:8000"  # FastAPI
     environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - TZ=Asia/Shanghai
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:?err}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -57,8 +63,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    networks:
+      - quantengine-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # ---- Optional: Scheduled data download ----
+  # ---- Optional: Scheduled data downloader ----
   data-downloader:
     image: quantengine-pro:latest
     container_name: quantengine-downloader
@@ -68,7 +87,8 @@ services:
         sleep 3600;
       done"
     environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - TZ=Asia/Shanghai
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:?err}
       - REDIS_HOST=redis
     volumes:
       - ./config:/app/config:ro
@@ -78,7 +98,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
     profiles:
-      - full  # Only start with: docker-compose --profile full up
+      - full
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    networks:
+      - quantengine-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  quantengine-net:
+    driver: bridge
 
 volumes:
   redis_data:
