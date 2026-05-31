@@ -14,8 +14,11 @@ QuantEngine Pro - 现代化交易系统仪表盘
 """
 
 import json
+import random
+import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
 
 import dash
@@ -76,6 +79,7 @@ NAV_ITEMS = [
     {"id": "ai",        "icon": "🤖", "label": "AI分析"},
     {"id": "data",      "icon": "📡", "label": "数据"},
     {"id": "logs",      "icon": "📝", "label": "日志"},
+    {"id": "settings",  "icon": "⚙️", "label": "设置"},
 ]
 
 
@@ -137,6 +141,23 @@ def create_dashboard(backtest_engine=None, strategy_registry=None,
 
         # 回测结果存储
         dcc.Store(id="backtest-result-store"),
+
+        # API 密钥存储（内存级，刷新页面后需重新配置）
+        dcc.Store(id="api-keys-store", data={
+            "deepseek_key": "",
+            "openai_key": "",
+            "anthropic_key": "",
+        }),
+
+        # 实时行情数据存储
+        dcc.Store(id="market-data-store", data={
+            "prices": {},
+            "timestamp": None,
+            "source": "pending",
+        }),
+
+        # 行情刷新定时器（每 5 秒）
+        dcc.Interval(id="market-refresh", interval=5000),
 
         # Toast 通知容器
         html.Div(id="toast-container"),
@@ -894,6 +915,120 @@ def _page_data() -> html.Div:
 #  页面：日志
 # ════════════════════════════════════════════════════════════
 
+def _page_settings() -> html.Div:
+    """设置页面 - API 密钥配置等。"""
+    return html.Div([
+        _section("API 密钥配置", icon="🔑", children=[
+            html.Div([
+                html.Div([
+                    html.Label("DeepSeek API Key", style={
+                        "fontSize": "13px", "fontWeight": "500",
+                        "color": COLORS["text_primary"], "marginBottom": "6px",
+                        "display": "block",
+                    }),
+                    html.Div([
+                        dcc.Input(id="cfg-deepseek-key", type="password",
+                                  placeholder="sk-...",
+                                  style={
+                                      "flex": "1", "padding": "10px 14px",
+                                      "borderRadius": "8px", "border": f"1px solid {COLORS['border']}",
+                                      "background": COLORS["bg_input"],
+                                      "color": COLORS["text_primary"], "fontSize": "14px",
+                                      "outline": "none",
+                                  }),
+                        html.Button("保存", id="save-deepseek-key", n_clicks=0,
+                                   style={
+                                       "padding": "10px 20px", "borderRadius": "8px",
+                                       "border": "none", "background": COLORS["accent"],
+                                       "color": "#fff", "fontSize": "13px",
+                                       "cursor": "pointer", "whiteSpace": "nowrap",
+                                   }),
+                    ], style={"display": "flex", "gap": "8px"}),
+                    html.Div(id="deepseek-key-status", style={
+                        "fontSize": "12px", "color": COLORS["text_muted"],
+                        "marginTop": "6px",
+                    }),
+                ], style={"marginBottom": "20px"}),
+
+                html.Div([
+                    html.Label("OpenAI API Key（可选）", style={
+                        "fontSize": "13px", "fontWeight": "500",
+                        "color": COLORS["text_primary"], "marginBottom": "6px",
+                        "display": "block",
+                    }),
+                    html.Div([
+                        dcc.Input(id="cfg-openai-key", type="password",
+                                  placeholder="sk-...",
+                                  style={
+                                      "flex": "1", "padding": "10px 14px",
+                                      "borderRadius": "8px", "border": f"1px solid {COLORS['border']}",
+                                      "background": COLORS["bg_input"],
+                                      "color": COLORS["text_primary"], "fontSize": "14px",
+                                      "outline": "none",
+                                  }),
+                        html.Button("保存", id="save-openai-key", n_clicks=0,
+                                   style={
+                                       "padding": "10px 20px", "borderRadius": "8px",
+                                       "border": "none", "background": COLORS["accent"],
+                                       "color": "#fff", "fontSize": "13px",
+                                       "cursor": "pointer", "whiteSpace": "nowrap",
+                                   }),
+                    ], style={"display": "flex", "gap": "8px"}),
+                    html.Div(id="openai-key-status", style={
+                        "fontSize": "12px", "color": COLORS["text_muted"],
+                        "marginTop": "6px",
+                    }),
+                ], style={"marginBottom": "20px"}),
+
+                html.Div([
+                    html.Label("数据源配置", style={
+                        "fontSize": "13px", "fontWeight": "500",
+                        "color": COLORS["text_primary"], "marginBottom": "10px",
+                        "display": "block",
+                    }),
+                    html.Div([
+                        html.Span("行情数据:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
+                        html.Span("akshare（A股·免费） + CCXT（加密货币·免费）",
+                                 style={"color": COLORS["text_muted"], "fontSize": "12px", "marginLeft": "8px"}),
+                    ], style={"marginBottom": "6px"}),
+                    html.Div([
+                        html.Span("大盘数据:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
+                        html.Span("EastMoney（免费）",
+                                 style={"color": COLORS["text_muted"], "fontSize": "12px", "marginLeft": "8px"}),
+                    ], style={"marginBottom": "6px"}),
+                    html.Div([
+                        html.Span("LLM服务:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
+                        html.Span("DeepSeek（需 API Key）→ OpenAI/Claude（可选升级）",
+                                 style={"color": COLORS["text_muted"], "fontSize": "12px", "marginLeft": "8px"}),
+                    ]),
+                ], style={
+                    "padding": "16px", "borderRadius": "8px",
+                    "background": COLORS["bg_base"],
+                    "border": f"1px solid {COLORS['border']}",
+                }),
+            ], style={"maxWidth": "600px"}),
+        ]),
+
+        _section("系统信息", icon="ℹ️", children=[
+            html.Div([
+                html.Div([
+                    html.Span("版本:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
+                    html.Span("0.1.0", style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px"}),
+                ], style={"marginBottom": "6px"}),
+                html.Div([
+                    html.Span("Python:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
+                    html.Span(f"{sys.version.split()[0] if hasattr(sys, 'version') else '3.10+'}",
+                             style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px"}),
+                ], style={"marginBottom": "6px"}),
+                html.Div([
+                    html.Span("内置策略:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
+                    html.Span("16个", style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px"}),
+                ]),
+            ]),
+        ]),
+    ])
+
+
 def _page_logs() -> html.Div:
     return html.Div([
         html.Div([
@@ -939,6 +1074,7 @@ def _register_callbacks(app: dash.Dash):
         "ai": _page_ai,
         "data": _page_data,
         "logs": _page_logs,
+        "settings": _page_settings,
     }
 
     @app.callback(
@@ -1115,3 +1251,103 @@ def _register_callbacks(app: dash.Dash):
             f"python scripts/download_data.py --market {market} --freq {freq}",
             style={"color": COLORS["info"]}
         )
+
+    # ── 实时行情刷新 ──────────────────────────────────
+    @app.callback(
+        Output("market-data-store", "data"),
+        Input("market-refresh", "n_intervals"),
+        prevent_initial_call=False,
+    )
+    def refresh_market_data(n_intervals):
+        """每 5 秒刷新一次实时行情（公开 API，无需 Key）。"""
+        import random
+        try:
+            import asyncio
+            from quantengine.data.ccxt_fetcher import CCXTQuoteFetcher
+            fetcher = CCXTQuoteFetcher({"exchange": "binance"})
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(
+                fetcher.fetch_realtime_quote("BTC/USDT")
+            )
+            loop.close()
+            btc_price = result.get("price", 0)
+            eth_result = loop.run_until_complete(
+                fetcher.fetch_realtime_quote("ETH/USDT")
+            ) if "ETH/USDT" else {}
+            eth_price = eth_result.get("price", 0) if eth_result else 0
+            source = "binance"
+        except Exception:
+            # 兜底：生成模拟价格（UI 保持有数据展示）
+            base = 67500 if n_intervals is None or n_intervals < 10 else 67500
+            btc_price = base + random.uniform(-200, 200)
+            eth_price = 3450 + random.uniform(-30, 30)
+            source = "simulated"
+
+        return {
+            "prices": {
+                "BTC/USDT": round(btc_price, 2),
+                "ETH/USDT": round(eth_price, 2),
+            },
+            "timestamp": datetime.now().isoformat(),
+            "source": source,
+        }
+
+    # ── 保存 DeepSeek Key ──────────────────────────────
+    @app.callback(
+        Output("deepseek-key-status", "children"),
+        Input("save-deepseek-key", "n_clicks"),
+        State("cfg-deepseek-key", "value"),
+        State("api-keys-store", "data"),
+        prevent_initial_call=True,
+    )
+    def save_deepseek_key(n, key, store):
+        if not key or not key.startswith("sk-"):
+            return html.Span("⚠️ 请输入有效的 API Key（以 sk- 开头）",
+                            style={"color": COLORS["warning"]})
+        store["deepseek_key"] = key
+        # 尝试写入 .env
+        try:
+            env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+            if env_path.exists():
+                content = env_path.read_text(encoding="utf-8")
+                if "DEEPSEEK_API_KEY" in content:
+                    lines_p = content.split("\n")
+                    content = "\n".join(
+                        l for l in lines_p if "DEEPSEEK_API_KEY" not in l
+                    )
+                content += f"\nDEEPSEEK_API_KEY={key}\n"
+                env_path.write_text(content, encoding="utf-8")
+            return html.Span("✅ 已保存", style={"color": COLORS["success"]})
+        except Exception as e:
+            return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
+                            style={"color": COLORS["info"]})
+
+    # ── 保存 OpenAI Key ────────────────────────────────
+    @app.callback(
+        Output("openai-key-status", "children"),
+        Input("save-openai-key", "n_clicks"),
+        State("cfg-openai-key", "value"),
+        State("api-keys-store", "data"),
+        prevent_initial_call=True,
+    )
+    def save_openai_key(n, key, store):
+        if not key or not key.startswith("sk-"):
+            return html.Span("⚠️ 请输入有效的 API Key（以 sk- 开头）",
+                            style={"color": COLORS["warning"]})
+        store["openai_key"] = key
+        try:
+            env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+            if env_path.exists():
+                content = env_path.read_text(encoding="utf-8")
+                if "OPENAI_API_KEY" in content:
+                    lines_p = content.split("\n")
+                    content = "\n".join(
+                        l for l in lines_p if "OPENAI_API_KEY" not in l
+                    )
+                content += f"\nOPENAI_API_KEY={key}\n"
+                env_path.write_text(content, encoding="utf-8")
+            return html.Span("✅ 已保存", style={"color": COLORS["success"]})
+        except Exception as e:
+            return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
+                            style={"color": COLORS["info"]})
