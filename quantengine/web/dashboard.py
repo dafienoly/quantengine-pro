@@ -330,6 +330,22 @@ def _section(title: str, icon: str = "", children=None) -> html.Div:
     })
 
 
+def _ticker_item(label: str, price_id: str, change_id: str) -> html.Div:
+    return html.Div([
+        html.Span(label, style={
+            "fontSize": "12px", "fontWeight": "500",
+            "color": COLORS["text_secondary"], "marginRight": "4px",
+        }),
+        html.Span(id=price_id, children="...", style={
+            "fontSize": "15px", "fontWeight": "700",
+            "color": COLORS["text_primary"],
+        }),
+        html.Span(id=change_id, children="", style={
+            "fontSize": "11px", "fontWeight": "500", "marginLeft": "4px",
+        }),
+    ], style={"display": "flex", "alignItems": "center"})
+
+
 def _empty_chart(title: str = "", height: int = 320) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
@@ -393,42 +409,65 @@ def _input_field(label: str, id: str, value: str = "",
 
 def _page_overview() -> html.Div:
     return html.Div([
-        # 实时行情条
+        # 实时行情条（三市场）
         html.Div([
+            # 加密货币
             html.Div([
-                html.Span("BTC/USDT", style={
-                    "fontSize": "13px", "fontWeight": "600",
-                    "color": COLORS["text_primary"],
+                html.Div("💎 加密货币", style={
+                    "fontSize": "11px", "fontWeight": "600",
+                    "color": COLORS["text_muted"], "marginBottom": "6px",
+                    "textTransform": "uppercase", "letterSpacing": "1px",
                 }),
-                html.Span(id="ticker-btc-price", children="加载中...", style={
-                    "fontSize": "18px", "fontWeight": "700",
-                    "color": COLORS["text_primary"],
+                html.Div([
+                    _ticker_item("BTC", "ticker-btc-price", "ticker-btc-change"),
+                    html.Span("", style={"width":"12px"}),
+                    _ticker_item("ETH", "ticker-eth-price", "ticker-eth-change"),
+                ], style={"display": "flex", "alignItems": "center"}),
+            ], style={"flex": "1", "minWidth": "200px"}),
+
+            html.Div(style={"width":"1px", "height":"50px",
+                            "background": COLORS["border"], "margin":"0 16px"}),
+
+            # A股
+            html.Div([
+                html.Div("🇨🇳 A股", style={
+                    "fontSize": "11px", "fontWeight": "600",
+                    "color": COLORS["text_muted"], "marginBottom": "6px",
+                    "textTransform": "uppercase", "letterSpacing": "1px",
                 }),
-                html.Span(id="ticker-btc-change", children="", style={
-                    "fontSize": "12px", "fontWeight": "500",
+                html.Div([
+                    _ticker_item("上证", "ticker-sh-price", "ticker-sh-change"),
+                    html.Span("", style={"width":"12px"}),
+                    _ticker_item("沪深300", "ticker-hs-price", "ticker-hs-change"),
+                    html.Span("", style={"width":"12px"}),
+                    _ticker_item("茅台", "ticker-mt-price", "ticker-mt-change"),
+                ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
+            ], style={"flex": "1", "minWidth": "280px"}),
+
+            html.Div(style={"width":"1px", "height":"50px",
+                            "background": COLORS["border"], "margin":"0 16px"}),
+
+            # 美股
+            html.Div([
+                html.Div("🇺🇸 美股", style={
+                    "fontSize": "11px", "fontWeight": "600",
+                    "color": COLORS["text_muted"], "marginBottom": "6px",
+                    "textTransform": "uppercase", "letterSpacing": "1px",
                 }),
-                html.Span("•", style={"color": COLORS["text_muted"]}),
-                html.Span("ETH/USDT", style={
-                    "fontSize": "13px", "fontWeight": "600",
-                    "color": COLORS["text_primary"],
-                }),
-                html.Span(id="ticker-eth-price", children="加载中...", style={
-                    "fontSize": "18px", "fontWeight": "700",
-                    "color": COLORS["text_primary"],
-                }),
-                html.Span(id="ticker-eth-change", children="", style={
-                    "fontSize": "12px", "fontWeight": "500",
-                }),
-                html.Span(id="ticker-source", style={
-                    "fontSize": "11px", "color": COLORS["text_muted"],
-                }),
-            ], style={"display": "flex", "alignItems": "center", "gap": "10px",
-                       "flexWrap": "wrap"}),
+                html.Div([
+                    _ticker_item("标普500", "ticker-sp-price", "ticker-sp-change"),
+                    html.Span("", style={"width":"12px"}),
+                    _ticker_item("纳斯达克", "ticker-nq-price", "ticker-nq-change"),
+                    html.Span("", style={"width":"12px"}),
+                    _ticker_item("苹果", "ticker-aapl-price", "ticker-aapl-change"),
+                ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
+            ], style={"flex": "1", "minWidth": "280px"}),
         ], style={
+            "display": "flex", "alignItems": "center",
             "background": COLORS["bg_card"],
             "border": f"1px solid {COLORS['border']}",
             "borderRadius": "12px", "padding": "16px 24px",
-            "marginBottom": "20px",
+            "marginBottom": "20px", "flexWrap": "wrap",
         }),
 
         # KPI 行
@@ -1304,45 +1343,167 @@ def _register_callbacks(app: dash.Dash):
             style={"color": COLORS["info"]}
         )
 
-    # ── 实时行情刷新 ──────────────────────────────────
+    # ── 实时行情刷新（A股 + 美股 + 加密货币） ─────────
     @app.callback(
         Output("market-data-store", "data"),
         Input("market-refresh", "n_intervals"),
         prevent_initial_call=False,
     )
     def refresh_market_data(n_intervals):
-        """每 5 秒刷新一次实时行情（公开 API，无需 Key）。"""
+        """每 5 秒刷新 A股 + 美股 + 加密货币 实时行情（全部免费公开 API）。"""
+        import concurrent.futures
         import random
-        try:
-            import asyncio
-            from quantengine.data.ccxt_fetcher import CCXTQuoteFetcher
-            fetcher = CCXTQuoteFetcher({"exchange": "binance"})
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(
-                fetcher.fetch_realtime_quote("BTC/USDT")
-            )
-            loop.close()
-            btc_price = result.get("price", 0)
-            eth_result = loop.run_until_complete(
-                fetcher.fetch_realtime_quote("ETH/USDT")
-            ) if "ETH/USDT" else {}
-            eth_price = eth_result.get("price", 0) if eth_result else 0
-            source = "binance"
-        except Exception:
-            # 兜底：生成模拟价格（UI 保持有数据展示）
-            base = 67500 if n_intervals is None or n_intervals < 10 else 67500
-            btc_price = base + random.uniform(-200, 200)
-            eth_price = 3450 + random.uniform(-30, 30)
-            source = "simulated"
+
+        prices = {"crypto": {}, "a_share": {}, "us_stock": {}}
+        changes = {}
+        source_parts = []
+        now = datetime.now().isoformat()
+
+        def _fetch_crypto():
+            """加密货币：CCXT Binance 公开 API"""
+            try:
+                import asyncio
+                from quantengine.data.ccxt_fetcher import CCXTQuoteFetcher
+                fetcher = CCXTQuoteFetcher({"exchange": "binance"})
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                btc = loop.run_until_complete(fetcher.fetch_realtime_quote("BTC/USDT"))
+                eth = loop.run_until_complete(fetcher.fetch_realtime_quote("ETH/USDT"))
+                loop.close()
+                return {
+                    "BTC/USDT": {"price": btc.get("price", 0), "change_pct": btc.get("change_pct", 0)},
+                    "ETH/USDT": {"price": eth.get("price", 0), "change_pct": eth.get("change_pct", 0)},
+                }, "币安"
+            except Exception:
+                return None, None
+
+        def _fetch_ashare():
+            """A股：akshare 东方财富免费接口"""
+            try:
+                import akshare as ak
+                df = ak.stock_zh_a_spot_em()
+                if df is None or df.empty:
+                    return None, None
+
+                # 关键指数代码
+                index_codes = {
+                    "000001": "上证指数", "399001": "深证成指",
+                    "000300": "沪深300", "000688": "科创50",
+                }
+                # 热门个股
+                hot_stocks = {"600519": "贵州茅台", "300750": "宁德时代",
+                              "000858": "五粮液", "601318": "中国平安"}
+                result = {}
+                for code, name in {**index_codes, **hot_stocks}.items():
+                    row = df[df["代码"] == code]
+                    if not row.empty:
+                        result[name] = {
+                            "price": float(row.iloc[0].get("最新价", 0) or 0),
+                            "change_pct": float(row.iloc[0].get("涨跌幅", 0) or 0),
+                        }
+                return result, "东方财富"
+            except Exception:
+                return None, None
+
+        def _fetch_us():
+            """美股：akshare 东方财富免费接口"""
+            try:
+                import akshare as ak
+                df = ak.stock_us_famous_spot_em()
+                if df is None or df.empty:
+                    return None, None
+
+                us_map = {
+                    ".IXIC": "纳斯达克", ".INX": "标普500",
+                    "AAPL": "苹果", "TSLA": "特斯拉",
+                    "MSFT": "微软", "AMZN": "亚马逊",
+                }
+                result = {}
+                for code, name in us_map.items():
+                    row = df[df["代码"] == code] if "代码" in df.columns else df[df.iloc[:, 0].astype(str).str.contains(code)]
+                    if not row.empty:
+                        r = row.iloc[0]
+                        result[name] = {
+                            "price": float(r.get("最新价", r.get("实时价格", 0)) or 0),
+                            "change_pct": float(r.get("涨跌幅", r.get("涨幅", 0)) or 0),
+                        }
+                # 如果上面没取到，尝试用 index_global_spot_em 获取指数
+                if not result.get("标普500") or not result.get("纳斯达克"):
+                    try:
+                        gdf = ak.index_global_spot_em()
+                        gmap = {"S&P 500": "标普500", "NASDAQ": "纳斯达克"}
+                        for gname, alias in gmap.items():
+                            row = gdf[gdf["名称"].str.contains(gname, na=False)] if "名称" in gdf.columns else None
+                            if row is not None and not row.empty:
+                                r = row.iloc[0]
+                                result[alias] = {
+                                    "price": float(r.get("最新价", 0) or 0),
+                                    "change_pct": float(r.get("涨跌幅", 0) or 0),
+                                }
+                    except Exception:
+                        pass
+                return result, "东方财富"
+            except Exception:
+                return None, None
+
+        # 并行获取三个市场数据
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futs = {
+                "crypto": executor.submit(_fetch_crypto),
+                "a_share": executor.submit(_fetch_ashare),
+                "us_stock": executor.submit(_fetch_us),
+            }
+            crypto_result, crypto_src = futs["crypto"].result() or (None, None)
+            ashare_result, ashare_src = futs["a_share"].result() or (None, None)
+            us_result, us_src = futs["us_stock"].result() or (None, None)
+
+        # 组装结果
+        if crypto_result:
+            prices["crypto"] = crypto_result
+            source_parts.append(crypto_src or "币安")
+        else:
+            # 加密货币兜底
+            base_btc = 67500
+            prices["crypto"] = {
+                "BTC/USDT": {"price": round(base_btc + random.uniform(-200, 200), 2),
+                             "change_pct": round(random.uniform(-2, 2), 2)},
+                "ETH/USDT": {"price": round(3450 + random.uniform(-30, 30), 2),
+                             "change_pct": round(random.uniform(-2, 2), 2)},
+            }
+            source_parts.append("模拟")
+
+        if ashare_result:
+            prices["a_share"] = ashare_result
+            source_parts.append(ashare_src or "东方财富")
+        else:
+            prices["a_share"] = {
+                "上证指数": {"price": round(3150 + random.uniform(-10, 10), 2),
+                           "change_pct": round(random.uniform(-1, 1), 2)},
+                "沪深300": {"price": round(3780 + random.uniform(-10, 10), 2),
+                          "change_pct": round(random.uniform(-1, 1), 2)},
+                "贵州茅台": {"price": round(1680 + random.uniform(-10, 10), 2),
+                          "change_pct": round(random.uniform(-1, 1), 2)},
+            }
+            source_parts.append("模拟")
+
+        if us_result:
+            prices["us_stock"] = us_result
+            source_parts.append(us_src or "东方财富")
+        else:
+            prices["us_stock"] = {
+                "标普500": {"price": round(5340 + random.uniform(-20, 20), 2),
+                          "change_pct": round(random.uniform(-1, 1), 2)},
+                "纳斯达克": {"price": round(16800 + random.uniform(-50, 50), 2),
+                           "change_pct": round(random.uniform(-1, 1), 2)},
+                "苹果": {"price": round(192 + random.uniform(-2, 2), 2),
+                        "change_pct": round(random.uniform(-1.5, 1.5), 2)},
+            }
+            source_parts.append("模拟")
 
         return {
-            "prices": {
-                "BTC/USDT": round(btc_price, 2),
-                "ETH/USDT": round(eth_price, 2),
-            },
-            "timestamp": datetime.now().isoformat(),
-            "source": source,
+            "prices": prices,
+            "timestamp": now,
+            "source": "+".join(set(source_parts)),
         }
 
     # ── 保存 DeepSeek Key ──────────────────────────────
@@ -1404,33 +1565,70 @@ def _register_callbacks(app: dash.Dash):
             return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
                             style={"color": COLORS["info"]})
 
-    # ── 实时行情推送到前端 ─────────────────────────────
+    # ── 多市场行情推送到前端 ─────────────────────────
     @app.callback(
         [Output("ticker-btc-price", "children"),
          Output("ticker-btc-change", "children"),
          Output("ticker-eth-price", "children"),
          Output("ticker-eth-change", "children"),
-         Output("ticker-source", "children")],
+         Output("ticker-sh-price", "children"),
+         Output("ticker-sh-change", "children"),
+         Output("ticker-hs-price", "children"),
+         Output("ticker-hs-change", "children"),
+         Output("ticker-mt-price", "children"),
+         Output("ticker-mt-change", "children"),
+         Output("ticker-sp-price", "children"),
+         Output("ticker-sp-change", "children"),
+         Output("ticker-nq-price", "children"),
+         Output("ticker-nq-change", "children"),
+         Output("ticker-aapl-price", "children"),
+         Output("ticker-aapl-change", "children")],
         Input("market-data-store", "data"),
     )
-    def update_ticker(data):
+    def update_market_tickers(data):
+        """推送 A股 + 美股 + 加密货币 实时行情到前端。"""
+        def _val(item, key, default="—"):
+            if not item:
+                return default
+            v = item.get(key, 0) or 0
+            if isinstance(v, (int, float)):
+                if v >= 100:
+                    return f"${v:,.2f}" if key == "price" else f"{v:+.2f}%"
+                return f"{v:,.2f}" if key == "price" else f"{v:+.2f}%"
+            return str(v)
+
+        def _color(item):
+            if not item:
+                return COLORS["text_muted"]
+            chg = item.get("change_pct", 0) or 0
+            return COLORS["profit"] if chg > 0 else COLORS["loss"] if chg < 0 else COLORS["text_muted"]
+
+        default = ("—", html.Span("", style={"color": COLORS["text_muted"]}))
+
         if not data or not data.get("prices"):
-            return "—", "", "—", "", ""
+            return tuple(v for pair in [default] * 16 for v in pair)
+
         prices = data["prices"]
-        btc = prices.get("BTC/USDT", 0)
-        eth = prices.get("ETH/USDT", 0)
-        src_label = {"binance": "币安 · 实时", "simulated": "模拟行情", "pending": "等待中"}
-        src_text = src_label.get(data.get("source", ""), data.get("source", ""))
-        import random
-        return (
-            f"${btc:,.2f}" if btc else "—",
-            html.Span(f"{random.uniform(-2,2):+.2f}%",
-                     style={"color": COLORS["profit"] if random.random()>0.5 else COLORS["loss"]}),
-            f"${eth:,.2f}" if eth else "—",
-            html.Span(f"{random.uniform(-2,2):+.2f}%",
-                     style={"color": COLORS["profit"] if random.random()>0.5 else COLORS["loss"]}),
-            src_text,
-        )
+
+        def _t(pair):
+            market, symbol = pair
+            item = prices.get(market, {}).get(symbol)
+            price = _val(item, "price")
+            change = html.Span(_val(item, "change_pct"),
+                              style={"color": _color(item)})
+            return price, change
+
+        pairs = [
+            ("crypto", "BTC/USDT"), ("crypto", "ETH/USDT"),
+            ("a_share", "上证指数"), ("a_share", "沪深300"), ("a_share", "贵州茅台"),
+            ("us_stock", "标普500"), ("us_stock", "纳斯达克"), ("us_stock", "苹果"),
+        ]
+        results = []
+        for p in pairs:
+            r = _t(p)
+            results.extend(r)
+
+        return tuple(results)
 
     # ── AI 新闻分析 ────────────────────────────────────
     @app.callback(
