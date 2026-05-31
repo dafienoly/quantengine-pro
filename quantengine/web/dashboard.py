@@ -247,33 +247,47 @@ def _sidebar() -> html.Div:
 
 def _header() -> html.Div:
     return html.Div([
-        # 页面标题
-        html.Div(id="page-title", style={
-            "fontSize": "20px", "fontWeight": "600",
-            "color": COLORS["text_primary"],
-        }),
-        # 右侧状态
+        # 顶栏第一行：标题 + 状态
         html.Div([
-            html.Div(id="live-clock", style={
-                "fontSize": "13px", "color": COLORS["text_muted"],
-                "fontFamily": "'JetBrains Mono', monospace",
+            html.Div(id="page-title", style={
+                "fontSize": "20px", "fontWeight": "600",
+                "color": COLORS["text_primary"],
             }),
             html.Div([
-                html.Span("●", style={
-                    "color": COLORS["success"], "fontSize": "10px",
+                html.Div(id="live-clock", style={
+                    "fontSize": "13px", "color": COLORS["text_muted"],
+                    "fontFamily": "'JetBrains Mono', monospace",
                 }),
-                html.Span("系统运行中", style={
-                    "fontSize": "12px", "color": COLORS["text_secondary"],
-                }),
-            ], style={"display": "flex", "alignItems": "center", "gap": "6px"}),
-        ], style={"display": "flex", "alignItems": "center", "gap": "20px"}),
+                html.Div([
+                    html.Span("●", style={
+                        "color": COLORS["success"], "fontSize": "10px",
+                    }),
+                    html.Span("系统运行中", style={
+                        "fontSize": "12px", "color": COLORS["text_secondary"],
+                    }),
+                ], style={"display": "flex", "alignItems": "center", "gap": "6px"}),
+            ], style={"display": "flex", "alignItems": "center", "gap": "20px"}),
+        ], style={
+            "display": "flex", "justifyContent": "space-between",
+            "alignItems": "center",
+            "marginBottom": "10px",
+        }),
+
+        # 顶栏第二行：三市场实时行情（始终可见，切换页面不影响）
+        html.Div(id="ticker-bar", style={
+            "display": "flex", "alignItems": "center", "gap": "16px",
+            "padding": "10px 16px",
+            "background": COLORS["bg_base"],
+            "borderRadius": "10px",
+            "border": f"1px solid {COLORS['border']}",
+            "minHeight": "36px",
+            "fontSize": "13px",
+            "color": COLORS["text_muted"],
+        }),
     ], style={
-        "display": "flex", "justifyContent": "space-between",
-        "alignItems": "center",
-        "padding": "16px 32px",
+        "padding": "12px 24px 0",
         "borderBottom": f"1px solid {COLORS['border']}",
         "backgroundColor": COLORS["bg_card"],
-        "height": "56px",
     })
 
 
@@ -409,67 +423,6 @@ def _input_field(label: str, id: str, value: str = "",
 
 def _page_overview() -> html.Div:
     return html.Div([
-        # 实时行情条（三市场）
-        html.Div([
-            # 加密货币
-            html.Div([
-                html.Div("💎 加密货币", style={
-                    "fontSize": "11px", "fontWeight": "600",
-                    "color": COLORS["text_muted"], "marginBottom": "6px",
-                    "textTransform": "uppercase", "letterSpacing": "1px",
-                }),
-                html.Div([
-                    _ticker_item("BTC", "ticker-btc-price", "ticker-btc-change"),
-                    html.Span("", style={"width":"12px"}),
-                    _ticker_item("ETH", "ticker-eth-price", "ticker-eth-change"),
-                ], style={"display": "flex", "alignItems": "center"}),
-            ], style={"flex": "1", "minWidth": "200px"}),
-
-            html.Div(style={"width":"1px", "height":"50px",
-                            "background": COLORS["border"], "margin":"0 16px"}),
-
-            # A股
-            html.Div([
-                html.Div("🇨🇳 A股", style={
-                    "fontSize": "11px", "fontWeight": "600",
-                    "color": COLORS["text_muted"], "marginBottom": "6px",
-                    "textTransform": "uppercase", "letterSpacing": "1px",
-                }),
-                html.Div([
-                    _ticker_item("上证", "ticker-sh-price", "ticker-sh-change"),
-                    html.Span("", style={"width":"12px"}),
-                    _ticker_item("沪深300", "ticker-hs-price", "ticker-hs-change"),
-                    html.Span("", style={"width":"12px"}),
-                    _ticker_item("茅台", "ticker-mt-price", "ticker-mt-change"),
-                ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
-            ], style={"flex": "1", "minWidth": "280px"}),
-
-            html.Div(style={"width":"1px", "height":"50px",
-                            "background": COLORS["border"], "margin":"0 16px"}),
-
-            # 美股
-            html.Div([
-                html.Div("🇺🇸 美股", style={
-                    "fontSize": "11px", "fontWeight": "600",
-                    "color": COLORS["text_muted"], "marginBottom": "6px",
-                    "textTransform": "uppercase", "letterSpacing": "1px",
-                }),
-                html.Div([
-                    _ticker_item("标普500", "ticker-sp-price", "ticker-sp-change"),
-                    html.Span("", style={"width":"12px"}),
-                    _ticker_item("纳斯达克", "ticker-nq-price", "ticker-nq-change"),
-                    html.Span("", style={"width":"12px"}),
-                    _ticker_item("苹果", "ticker-aapl-price", "ticker-aapl-change"),
-                ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
-            ], style={"flex": "1", "minWidth": "280px"}),
-        ], style={
-            "display": "flex", "alignItems": "center",
-            "background": COLORS["bg_card"],
-            "border": f"1px solid {COLORS['border']}",
-            "borderRadius": "12px", "padding": "16px 24px",
-            "marginBottom": "20px", "flexWrap": "wrap",
-        }),
-
         # KPI 行
         html.Div([
             _kpi_card("总资产", "¥100,000.00", "初始资金 ¥100,000",
@@ -1565,70 +1518,48 @@ def _register_callbacks(app: dash.Dash):
             return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
                             style={"color": COLORS["info"]})
 
-    # ── 多市场行情推送到前端 ─────────────────────────
+    # ── 多市场行情 → ticker-bar（始终在顶栏，切换页面不丢失） ─
     @app.callback(
-        [Output("ticker-btc-price", "children"),
-         Output("ticker-btc-change", "children"),
-         Output("ticker-eth-price", "children"),
-         Output("ticker-eth-change", "children"),
-         Output("ticker-sh-price", "children"),
-         Output("ticker-sh-change", "children"),
-         Output("ticker-hs-price", "children"),
-         Output("ticker-hs-change", "children"),
-         Output("ticker-mt-price", "children"),
-         Output("ticker-mt-change", "children"),
-         Output("ticker-sp-price", "children"),
-         Output("ticker-sp-change", "children"),
-         Output("ticker-nq-price", "children"),
-         Output("ticker-nq-change", "children"),
-         Output("ticker-aapl-price", "children"),
-         Output("ticker-aapl-change", "children")],
+        Output("ticker-bar", "children"),
         Input("market-data-store", "data"),
     )
-    def update_market_tickers(data):
-        """推送 A股 + 美股 + 加密货币 实时行情到前端。"""
-        def _val(item, key, default="—"):
-            if not item:
-                return default
-            v = item.get(key, 0) or 0
-            if isinstance(v, (int, float)):
-                if v >= 100:
-                    return f"${v:,.2f}" if key == "price" else f"{v:+.2f}%"
-                return f"{v:,.2f}" if key == "price" else f"{v:+.2f}%"
-            return str(v)
-
-        def _color(item):
-            if not item:
-                return COLORS["text_muted"]
-            chg = item.get("change_pct", 0) or 0
-            return COLORS["profit"] if chg > 0 else COLORS["loss"] if chg < 0 else COLORS["text_muted"]
-
-        default = ("—", html.Span("", style={"color": COLORS["text_muted"]}))
-
+    def update_ticker_bar(data):
+        """每次 market-data-store 更新时刷新顶栏行情条。"""
         if not data or not data.get("prices"):
-            return tuple(v for pair in [default] * 16 for v in pair)
+            return "等待行情数据..."
 
         prices = data["prices"]
 
-        def _t(pair):
-            market, symbol = pair
-            item = prices.get(market, {}).get(symbol)
-            price = _val(item, "price")
-            change = html.Span(_val(item, "change_pct"),
-                              style={"color": _color(item)})
-            return price, change
+        def _tile(market_key, label, items):
+            """生成一个市场区块。"""
+            parts = []
+            for sym in items:
+                item = prices.get(market_key, {}).get(sym)
+                if not item:
+                    parts.append(html.Span(f"{sym} ...", style={"color": COLORS["text_muted"]}))
+                    continue
+                p = item.get("price", 0) or 0
+                chg = item.get("change_pct", 0) or 0
+                color = COLORS["profit"] if chg > 0 else COLORS["loss"] if chg < 0 else COLORS["text_primary"]
+                parts.append(html.Span([
+                    html.Span(f"{sym} ", style={"color": COLORS["text_secondary"], "fontSize": "12px"}),
+                    html.Span(f"{p:,.2f}" if p < 100 else f"${p:,.0f}" if market_key == "crypto" else f"{p:,.2f}",
+                             style={"fontWeight": "700", "fontSize": "14px", "color": COLORS["text_primary"]}),
+                    html.Span(f"  {chg:+.2f}%", style={"fontSize": "12px", "fontWeight": "500", "color": color}),
+                ], style={"display": "inline-flex", "alignItems": "center", "gap": "3px", "marginRight": "14px"}))
+            return html.Div([
+                html.Span(label, style={"fontSize": "11px", "fontWeight": "600",
+                           "color": COLORS["text_muted"], "marginRight": "6px"}),
+                *parts,
+            ], style={"display": "flex", "alignItems": "center", "flex": "1"})
 
-        pairs = [
-            ("crypto", "BTC/USDT"), ("crypto", "ETH/USDT"),
-            ("a_share", "上证指数"), ("a_share", "沪深300"), ("a_share", "贵州茅台"),
-            ("us_stock", "标普500"), ("us_stock", "纳斯达克"), ("us_stock", "苹果"),
-        ]
-        results = []
-        for p in pairs:
-            r = _t(p)
-            results.extend(r)
-
-        return tuple(results)
+        return html.Div([
+            _tile("crypto", "💎", ["BTC/USDT", "ETH/USDT"]),
+            html.Div(style={"width": "1px", "height": "30px", "background": COLORS["border"]}),
+            _tile("a_share", "🇨🇳", ["上证指数", "沪深300", "贵州茅台"]),
+            html.Div(style={"width": "1px", "height": "30px", "background": COLORS["border"]}),
+            _tile("us_stock", "🇺🇸", ["标普500", "纳斯达克", "苹果"]),
+        ], style={"display": "flex", "alignItems": "center", "width": "100%", "gap": "8px"})
 
     # ── AI 新闻分析 ────────────────────────────────────
     @app.callback(
