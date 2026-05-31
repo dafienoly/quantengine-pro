@@ -35,10 +35,22 @@ def main():
 
     try:
         from quantengine.web.dashboard import create_dashboard
+        from quantengine.web import api as api_module
         from quantengine.web.api import create_app
         import uvicorn
 
-        # Start FastAPI in background thread
+        from quantengine.backtest.engine import BacktestEngine
+        from quantengine.strategy.registry import StrategyRegistry
+        from quantengine.analysis.market_overview import MarketOverview
+
+        backtest_engine = BacktestEngine(initial_capital=100000, market="crypto")
+        strategy_registry = StrategyRegistry()
+        market_overview = MarketOverview({})
+
+        api_module.backtest_engine = backtest_engine
+        api_module.strategy_registry = strategy_registry
+        api_module.market_overview = market_overview
+
         api_app = create_app()
 
         def run_api():
@@ -49,8 +61,11 @@ def main():
         api_thread.start()
         logger.info(f"API 服务已启动，端口: {args.api_port}")
 
-        # Start Dash (main thread)
-        dashboard = create_dashboard()
+        dashboard = create_dashboard(
+            backtest_engine=backtest_engine,
+            strategy_registry=strategy_registry,
+            market_overview=market_overview,
+        )
         dashboard.run(host=args.host, port=args.port, debug=args.debug)
 
     except ImportError as e:

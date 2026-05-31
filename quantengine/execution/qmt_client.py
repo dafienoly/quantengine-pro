@@ -277,11 +277,13 @@ class QMTBrokerClient(BaseBrokerClient):
             stamp_tax = proceeds * self.STAMP_TAX_RATE
             net_proceeds = proceeds - commission - stamp_tax
 
-            # Update position
+            # Update position and record realized PnL
             pos["quantity"] -= quantity
             pos["available"] -= quantity
+            # 每次卖出都记录已实现盈亏（部分卖出也记录）
+            trade_pnl = net_proceeds - (quantity * pos["avg_price"])
+            self._sim_realized_pnl += trade_pnl
             if pos["quantity"] <= 0:
-                self._sim_realized_pnl += net_proceeds - (quantity * pos["avg_price"])
                 del self._sim_positions[symbol]
 
             self._sim_cash += net_proceeds

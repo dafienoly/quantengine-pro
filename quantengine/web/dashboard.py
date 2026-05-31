@@ -11,6 +11,7 @@ QuantEngine Pro - 现代化交易系统仪表盘
   AI分析 - 新闻情感、AI推荐、信号
   数据 - 行情数据一键下载
   日志 - 系统日志与交易记录
+  设置 - API 密钥配置与系统信息
 """
 
 import json
@@ -26,7 +27,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 
-# ── 全局状态（避免跨回调序列化问题） ─────────────────────────
 _backtest_engine_ref = None
 _strategy_registry_ref = None
 _market_overview_ref = None
@@ -36,7 +36,6 @@ _llm_service_ref = None
 
 def set_globals(backtest_engine=None, strategy_registry=None,
                 market_overview=None, live_executor=None, llm_service=None):
-    """Set global references for dashboard callbacks."""
     global _backtest_engine_ref, _strategy_registry_ref
     global _market_overview_ref, _live_executor_ref, _llm_service_ref
     _backtest_engine_ref = backtest_engine
@@ -46,31 +45,32 @@ def set_globals(backtest_engine=None, strategy_registry=None,
     _llm_service_ref = llm_service
 
 
-# ── 配色方案 ────────────────────────────────────────────────
 COLORS = {
-    "bg_base": "#0a0e17",
-    "bg_card": "#111827",
-    "bg_card_hover": "#1a2236",
-    "bg_sidebar": "#0d1117",
-    "bg_input": "#1a2236",
-    "border": "#1f2937",
-    "border_hover": "#374151",
-    "text_primary": "#f3f4f6",
-    "text_secondary": "#9ca3af",
-    "text_muted": "#6b7280",
-    "accent": "#3b82f6",
-    "accent_hover": "#2563eb",
-    "success": "#10b981",
-    "danger": "#ef4444",
-    "warning": "#f59e0b",
-    "info": "#06b6d4",
-    "profit": "#10b981",
-    "loss": "#ef4444",
+    "bg_base": "#060a12",
+    "bg_card": "rgba(12,18,30,0.85)",
+    "bg_card_hover": "#151d2e",
+    "bg_sidebar": "#080d18",
+    "bg_input": "#0e1525",
+    "border": "rgba(30,41,59,0.5)",
+    "border_hover": "rgba(99,102,241,0.3)",
+    "text_primary": "#eef2f7",
+    "text_secondary": "#8b9ab8",
+    "text_muted": "#5a6a84",
+    "accent": "#6366f1",
+    "accent_hover": "#818cf8",
+    "accent_glow": "rgba(99,102,241,0.12)",
+    "success": "#34d399",
+    "danger": "#f87171",
+    "warning": "#fbbf24",
+    "info": "#22d3ee",
+    "profit": "#34d399",
+    "loss": "#f87171",
+    "gradient_start": "#6366f1",
+    "gradient_end": "#a855f7",
 }
 
-SIDEBAR_WIDTH = 220
+SIDEBAR_WIDTH = 240
 
-# ── 导航项 ──────────────────────────────────────────────────
 NAV_ITEMS = [
     {"id": "overview",  "icon": "📊", "label": "总览"},
     {"id": "backtest",  "icon": "📈", "label": "回测"},
@@ -82,408 +82,8 @@ NAV_ITEMS = [
     {"id": "settings",  "icon": "⚙️", "label": "设置"},
 ]
 
-
-# ════════════════════════════════════════════════════════════
-#  全局样式
-# ════════════════════════════════════════════════════════════
-
-
-
-# ════════════════════════════════════════════════════════════
-#  创建应用
-# ════════════════════════════════════════════════════════════
-
-def create_dashboard(backtest_engine=None, strategy_registry=None,
-                     market_overview=None) -> dash.Dash:
-    """创建现代化交易系统仪表盘。"""
-    set_globals(
-        backtest_engine=backtest_engine,
-        strategy_registry=strategy_registry,
-        market_overview=market_overview,
-    )
-
-    app = dash.Dash(
-        __name__,
-        title="量化引擎专业版",
-        update_title=None,
-    )
-
-    # ── 布局 ──
-    app.layout = html.Div([
-        # 全局样式
-        # CSS 通过内联样式实现，无需额外加载
-
-        # 侧边栏
-        _sidebar(),
-
-        # 主区域
-        html.Div([
-            # 顶栏
-            _header(),
-
-            # 页面内容容器
-            html.Div(id="page-content", style={
-                "padding": "24px 32px",
-                "overflowY": "auto",
-                "height": "calc(100vh - 120px)",
-            }),
-        ], style={
-            "marginLeft": f"{SIDEBAR_WIDTH}px",
-            "display": "flex", "flexDirection": "column",
-            "height": "100vh",
-        }),
-
-        # 全局定时刷新
-        dcc.Interval(id="global-timer", interval=5000),
-
-        # 存储当前页面（避免 URL 路由）
-        dcc.Store(id="current-page", data="overview"),
-
-        # 回测结果存储
-        dcc.Store(id="backtest-result-store"),
-
-        # API 密钥存储（内存级，刷新页面后需重新配置）
-        dcc.Store(id="api-keys-store", data={
-            "deepseek_key": "",
-            "openai_key": "",
-            "anthropic_key": "",
-        }),
-
-        # 实时行情数据存储
-        dcc.Store(id="market-data-store", data={
-            "prices": {},
-            "timestamp": None,
-            "source": "pending",
-        }),
-
-        # 行情刷新定时器（每 5 秒）
-        dcc.Interval(id="market-refresh", interval=5000),
-
-        # Toast 通知容器
-        html.Div(id="toast-container"),
-    ], style={
-        "backgroundColor": COLORS["bg_base"],
-        "minHeight": "100vh",
-        "fontFamily": "'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
-        "color": COLORS["text_primary"],
-    })
-
-    # ── 回调注册 ──
-    _register_callbacks(app)
-
-    return app
-
-
-# ════════════════════════════════════════════════════════════
-#  侧边栏
-# ════════════════════════════════════════════════════════════
-
-def _sidebar() -> html.Div:
-    nav_links = []
-    for item in NAV_ITEMS:
-        nav_links.append(
-            html.Div(
-                f"{item['icon']}  {item['label']}",
-                id=f"nav-{item['id']}",
-                className="nav-item",
-                n_clicks=0,
-                style={
-                    "padding": "12px 20px",
-                    "cursor": "pointer",
-                    "borderRadius": "8px",
-                    "margin": "2px 10px",
-                    "fontSize": "14px",
-                    "color": COLORS["text_secondary"],
-                    "transition": "all 0.2s",
-                    "display": "flex",
-                    "alignItems": "center",
-                    "gap": "8px",
-                },
-            )
-        )
-
-    return html.Div([
-        # Logo
-        html.Div([
-            html.Div("⚡", style={"fontSize": "24px"}),
-            html.Div([
-                html.Div("量化引擎", style={
-                    "fontSize": "16px", "fontWeight": "700",
-                    "color": COLORS["text_primary"], "lineHeight": "1.2",
-                }),
-                html.Div("专业版", style={
-                    "fontSize": "11px", "color": COLORS["text_muted"],
-                    "letterSpacing": "2px",
-                }),
-            ]),
-        ], style={
-            "padding": "20px 16px 24px",
-            "display": "flex", "alignItems": "center", "gap": "10px",
-            "borderBottom": f"1px solid {COLORS['border']}",
-        }),
-
-        # 导航
-        html.Div(nav_links, style={"padding": "12px 0", "flex": "1"}),
-
-        # 底部版本号
-        html.Div("v0.1.0", style={
-            "textAlign": "center", "padding": "16px",
-            "fontSize": "11px", "color": COLORS["text_muted"],
-            "borderTop": f"1px solid {COLORS['border']}",
-        }),
-    ], style={
-        "position": "fixed", "left": 0, "top": 0,
-        "width": f"{SIDEBAR_WIDTH}px", "height": "100vh",
-        "backgroundColor": COLORS["bg_sidebar"],
-        "borderRight": f"1px solid {COLORS['border']}",
-        "display": "flex", "flexDirection": "column",
-        "zIndex": 100,
-    })
-
-
-# ════════════════════════════════════════════════════════════
-#  顶栏
-# ════════════════════════════════════════════════════════════
-
-def _header() -> html.Div:
-    return html.Div([
-        # 顶栏第一行：标题 + 状态
-        html.Div([
-            html.Div(id="page-title", style={
-                "fontSize": "20px", "fontWeight": "600",
-                "color": COLORS["text_primary"],
-            }),
-            html.Div([
-                html.Div(id="live-clock", style={
-                    "fontSize": "13px", "color": COLORS["text_muted"],
-                    "fontFamily": "'JetBrains Mono', monospace",
-                }),
-                html.Div([
-                    html.Span("●", style={
-                        "color": COLORS["success"], "fontSize": "10px",
-                    }),
-                    html.Span("系统运行中", style={
-                        "fontSize": "12px", "color": COLORS["text_secondary"],
-                    }),
-                ], style={"display": "flex", "alignItems": "center", "gap": "6px"}),
-            ], style={"display": "flex", "alignItems": "center", "gap": "20px"}),
-        ], style={
-            "display": "flex", "justifyContent": "space-between",
-            "alignItems": "center",
-            "marginBottom": "10px",
-        }),
-
-        # 顶栏第二行：三市场实时行情（始终可见，切换页面不影响）
-        html.Div(id="ticker-bar", style={
-            "display": "flex", "alignItems": "center", "gap": "16px",
-            "padding": "10px 16px",
-            "background": COLORS["bg_base"],
-            "borderRadius": "10px",
-            "border": f"1px solid {COLORS['border']}",
-            "minHeight": "36px",
-            "fontSize": "13px",
-            "color": COLORS["text_muted"],
-        }),
-    ], style={
-        "padding": "12px 24px 0",
-        "borderBottom": f"1px solid {COLORS['border']}",
-        "backgroundColor": COLORS["bg_card"],
-    })
-
-
-# ════════════════════════════════════════════════════════════
-#  工具函数
-# ════════════════════════════════════════════════════════════
-
-def _kpi_card(title: str, value: str, subtitle: str = "",
-              color: str = COLORS["text_primary"],
-              icon: str = "", delta: str = "") -> html.Div:
-    return html.Div([
-        html.Div([
-            html.Span(icon, style={"fontSize": "20px"}) if icon else None,
-            html.Span(title, style={"fontSize": "12px", "color": COLORS["text_muted"]}),
-        ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
-        html.Div(value, style={
-            "fontSize": "26px", "fontWeight": "700",
-            "color": color, "marginTop": "8px",
-            "fontFamily": "'JetBrains Mono', monospace",
-        }),
-        html.Div([
-            html.Span(delta, style={
-                "fontSize": "12px", "fontWeight": "500",
-                "color": COLORS["success"] if delta.startswith("+") else COLORS["danger"] if delta.startswith("-") else COLORS["text_muted"],
-            }) if delta else None,
-            html.Span(subtitle, style={"fontSize": "11px", "color": COLORS["text_muted"]}),
-        ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginTop": "4px"}),
-    ], style={
-        "backgroundColor": COLORS["bg_card"],
-        "border": f"1px solid {COLORS['border']}",
-        "borderRadius": "12px",
-        "padding": "20px",
-        "transition": "all 0.2s",
-    })
-
-
-def _section(title: str, icon: str = "", children=None) -> html.Div:
-    return html.Div([
-        html.Div([
-            html.Span(icon) if icon else None,
-            html.H3(title, style={
-                "fontSize": "15px", "fontWeight": "600",
-                "color": COLORS["text_primary"], "margin": 0,
-            }),
-        ], style={"display": "flex", "alignItems": "center", "gap": "8px",
-                   "marginBottom": "16px"}),
-        children,
-    ], style={
-        "backgroundColor": COLORS["bg_card"],
-        "border": f"1px solid {COLORS['border']}",
-        "borderRadius": "12px",
-        "padding": "24px",
-        "marginBottom": "16px",
-    })
-
-
-def _ticker_item(label: str, price_id: str, change_id: str) -> html.Div:
-    return html.Div([
-        html.Span(label, style={
-            "fontSize": "12px", "fontWeight": "500",
-            "color": COLORS["text_secondary"], "marginRight": "4px",
-        }),
-        html.Span(id=price_id, children="...", style={
-            "fontSize": "15px", "fontWeight": "700",
-            "color": COLORS["text_primary"],
-        }),
-        html.Span(id=change_id, children="", style={
-            "fontSize": "11px", "fontWeight": "500", "marginLeft": "4px",
-        }),
-    ], style={"display": "flex", "alignItems": "center"})
-
-
-def _empty_chart(title: str = "", height: int = 320) -> go.Figure:
-    fig = go.Figure()
-    fig.update_layout(
-        title={"text": title, "font": {"color": COLORS["text_muted"], "size": 13}},
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": COLORS["text_secondary"], "size": 11},
-        margin=dict(l=40, r=20, t=40, b=40),
-        height=height,
-        xaxis={"gridcolor": "rgba(255,255,255,0.05)", "showgrid": True},
-        yaxis={"gridcolor": "rgba(255,255,255,0.05)", "showgrid": True},
-    )
-    return fig
-
-
-def _btn(text: str, id: str, primary: bool = True, full: bool = False) -> html.Button:
-    return html.Button(text, id=id, n_clicks=0, style={
-        "padding": "10px 24px",
-        "borderRadius": "8px",
-        "border": "none",
-        "fontSize": "14px",
-        "fontWeight": "500",
-        "cursor": "pointer",
-        "transition": "all 0.2s",
-        "width": "100%" if full else "auto",
-        "background": COLORS["accent"] if primary else COLORS["bg_input"],
-        "color": "#fff" if primary else COLORS["text_primary"],
-        "border": f"1px solid {COLORS['border']}" if not primary else "none",
-    })
-
-
-def _input_field(label: str, id: str, value: str = "",
-                 type: str = "text", options: list = None) -> html.Div:
-    control = dcc.Input(
-        id=id, type=type, value=value,
-        style={
-            "width": "100%", "padding": "8px 12px",
-            "borderRadius": "6px", "border": f"1px solid {COLORS['border']}",
-            "backgroundColor": COLORS["bg_input"],
-            "color": COLORS["text_primary"],
-            "fontSize": "13px", "outline": "none",
-        }
-    ) if options is None else dcc.Dropdown(
-        id=id, options=options, value=value,
-        style={"color": "#000"},
-    )
-    return html.Div([
-        html.Label(label, style={
-            "fontSize": "12px", "fontWeight": "500",
-            "color": COLORS["text_secondary"],
-            "marginBottom": "6px", "display": "block",
-        }),
-        control,
-    ], style={"marginBottom": "12px"})
-
-
-# ════════════════════════════════════════════════════════════
-#  页面：总览
-# ════════════════════════════════════════════════════════════
-
-def _page_overview() -> html.Div:
-    return html.Div([
-        # KPI 行
-        html.Div([
-            _kpi_card("总资产", "¥100,000.00", "初始资金 ¥100,000",
-                      icon="💰", delta="+0.00%"),
-            _kpi_card("当日盈亏", "¥0.00", "未实现",
-                      color=COLORS["profit"], icon="📈", delta="+0.00%"),
-            _kpi_card("最大回撤", "0.00%", "当前回撤 0.00%",
-                      color=COLORS["text_primary"], icon="📉"),
-            _kpi_card("夏普比率", "—", "年化 0.00%",
-                      color=COLORS["info"], icon="🎯"),
-        ], style={
-            "display": "grid",
-            "gridTemplateColumns": "repeat(auto-fit, minmax(220px, 1fr))",
-            "gap": "16px", "marginBottom": "24px",
-        }),
-
-        # 权益曲线
-        _section("权益曲线", icon="📊",
-            children=dcc.Graph(
-                id="overview-equity-chart",
-                figure=_empty_chart("暂无回测数据，请前往「回测」页面运行"),
-                style={"height": "360px"},
-                config={"displayModeBar": False},
-            ),
-        ),
-
-        # 持仓 + 交易双栏
-        html.Div([
-            _section("当前持仓", icon="💼",
-                children=html.Div(id="overview-positions",
-                    children=[
-                        html.Div("暂无持仓", style={
-                            "color": COLORS["text_muted"],
-                            "textAlign": "center", "padding": "40px 0",
-                            "fontSize": "13px",
-                        }),
-                    ],
-                ),
-            ),
-            _section("最近交易", icon="🔄",
-                children=html.Div(id="overview-trades",
-                    children=[
-                        html.Div("暂无交易记录", style={
-                            "color": COLORS["text_muted"],
-                            "textAlign": "center", "padding": "40px 0",
-                            "fontSize": "13px",
-                        }),
-                    ],
-                ),
-            ),
-        ], style={
-            "display": "grid",
-            "gridTemplateColumns": "1fr 1fr",
-            "gap": "16px",
-        }),
-    ])
-
-
-# ════════════════════════════════════════════════════════════
-#  页面：回测（核心功能 — 全部内嵌，无需 CLI）
-# ════════════════════════════════════════════════════════════
+FONT_UI = "'DM Sans', 'Noto Sans SC', sans-serif"
+FONT_MONO = "'JetBrains Mono', 'Fira Code', monospace"
 
 STRATEGY_OPTIONS = [
     {"label": "Dual Thrust - 区间突破", "value": "dual_thrust"},
@@ -515,10 +115,399 @@ TF_OPTIONS = [
     {"label": "1 周", "value": "1w"},
 ]
 
+STRATEGY_DETAILS = [
+    ("dual_thrust", "Dual Thrust", "区间突破", "经典突破策略，基于前 N 日最高/最低价计算突破区间，K1/K2 参数控制突破敏感度。"),
+    ("turtle", "Turtle", "趋势跟踪", "海龟交易策略，唐奇安通道突破入场，ATR 浮动止损，趋势跟踪经典之作。"),
+    ("bollinger", "Bollinger", "均值回归", "布林带上下轨触发反转信号，RSI 过滤确认，适合震荡行情。"),
+    ("dual_ma", "Dual MA", "趋势跟踪", "双均线金叉死叉信号，配合网格仓位管理，简单有效。"),
+    ("r_breaker", "R Breaker", "突破/反转", "基于前日价格的 6 级关键价位系统，突破与反转双向交易。"),
+    ("grid_ma", "Grid+MA", "网格交易", "MA 趋势方向过滤 + 网格分层建仓，下跌加仓上涨减仓。"),
+    ("simple_mm", "Simple MM", "做市商", "中间价双侧挂限价单，赚取买卖价差，适合低波动品种。"),
+    ("panic_reversal", "Panic Reversal", "恐慌反转", "检测恐慌性下跌 + 成交量飙升 + RSI 恢复确认，情绪反转入场。"),
+    ("low_vol_defense", "Low Vol Defense", "波动防御", "高波动率自动减仓至 50%，低波动率恢复正常仓位。"),
+    ("multi_factor", "Multi Factor", "多因子选股", "动量 + 波动率 + RSI + MACD 多因子等权打分，选择综合得分最高的标的。"),
+    ("sector_rotation", "Sector Rotation", "行业轮动", "计算各板块动量强度，定期调仓至动量最强的板块。"),
+    ("aberration", "Aberration", "波动率通道", "布林带自适应通道，价格触及外轨反向开仓，回归中轨止盈。"),
+    ("pivot_point", "Pivot Point", "枢轴点", "经典日内枢轴点系统，S1/S2 支撑买入，R1/R2 阻力卖出。"),
+    ("fei_ali", "Fei Ali", "四价突破", "基于昨高/昨低/昨收/昨开的四价突破系统，突破关键价位入场。"),
+    ("dynamic_breakout_ii", "Dynamic Breakout II", "动态突破", "ATR 动态调整回溯周期，高波动时快速反应，低波动时稳定持仓。"),
+    ("rsi_reversal", "RSI Reversal", "RSI反转", "RSI 超买超卖阈值反转交易，超卖买入超买卖出。"),
+]
+
+DOWNLOAD_SYMBOLS = [
+    {"label": "BTC/USDT", "value": "BTC/USDT"},
+    {"label": "ETH/USDT", "value": "ETH/USDT"},
+    {"label": "SOL/USDT", "value": "SOL/USDT"},
+]
+
+DOWNLOAD_MARKETS = [
+    {"label": "加密货币", "value": "crypto"},
+    {"label": "A 股", "value": "a_share"},
+]
+
+
+def _card_style():
+    return {
+        "backgroundColor": "rgba(12,18,30,0.85)",
+        "border": "1px solid rgba(30,41,59,0.5)",
+        "borderRadius": "14px",
+        "padding": "24px",
+        "backdropFilter": "blur(12px)",
+        "boxShadow": "0 4px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03)",
+    }
+
+
+def _kpi_card(title: str, value: str, subtitle: str = "",
+              color: str = COLORS["text_primary"],
+              icon: str = "", delta: str = "") -> html.Div:
+    delta_color = COLORS["success"] if delta.startswith("+") else COLORS["danger"] if delta.startswith("-") else COLORS["text_muted"]
+    delta_bg = "rgba(52,211,153,0.12)" if delta.startswith("+") else "rgba(248,113,113,0.12)" if delta.startswith("-") else "rgba(90,106,132,0.12)"
+    return html.Div([
+        html.Div([
+            html.Span(icon, style={"fontSize": "18px"}) if icon else None,
+            html.Span(title, style={
+                "fontSize": "11px", "color": COLORS["text_muted"],
+                "textTransform": "uppercase", "letterSpacing": "0.8px",
+                "fontWeight": "600",
+            }),
+        ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
+        html.Div(value, style={
+            "fontSize": "26px", "fontWeight": "700",
+            "color": color, "marginTop": "10px",
+            "fontFamily": FONT_MONO, "lineHeight": "1.1",
+        }),
+        html.Div([
+            html.Span(delta, style={
+                "fontSize": "11px", "fontWeight": "600",
+                "color": delta_color,
+                "background": delta_bg,
+                "padding": "2px 8px", "borderRadius": "8px",
+            }) if delta else None,
+            html.Span(subtitle, style={"fontSize": "11px", "color": COLORS["text_muted"]}),
+        ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginTop": "8px"}),
+    ], style={
+        **_card_style(),
+        "position": "relative",
+        "overflow": "hidden",
+        "transition": "transform 0.2s cubic-bezier(.4,0,.2,1), box-shadow 0.2s",
+    })
+
+
+def _section(title: str, icon: str = "", children=None) -> html.Div:
+    header = html.Div([
+        html.Span(icon, style={"fontSize": "15px"}) if icon else None,
+        html.H3(title, style={
+            "fontSize": "13px", "fontWeight": "600",
+            "color": COLORS["text_primary"], "margin": 0,
+            "textTransform": "uppercase", "letterSpacing": "0.8px",
+        }),
+    ], style={"display": "flex", "alignItems": "center", "gap": "8px",
+               "marginBottom": "16px", "paddingBottom": "12px",
+               "borderBottom": "1px solid rgba(30,41,59,0.4)"})
+    content = [header]
+    if isinstance(children, list):
+        content.extend(children)
+    elif children is not None:
+        content.append(children)
+    return html.Div(content, style={
+        **_card_style(),
+        "marginBottom": "16px",
+    })
+
+
+def _ticker_item(label: str, price_id: str, change_id: str) -> html.Div:
+    return html.Div([
+        html.Span(label, style={
+            "fontSize": "12px", "fontWeight": "500",
+            "color": COLORS["text_secondary"], "marginRight": "4px",
+        }),
+        html.Span(id=price_id, children="...", style={
+            "fontSize": "15px", "fontWeight": "700",
+            "color": COLORS["text_primary"],
+            "fontFamily": FONT_MONO,
+        }),
+        html.Span(id=change_id, children="", style={
+            "fontSize": "11px", "fontWeight": "500", "marginLeft": "4px",
+        }),
+    ], style={"display": "flex", "alignItems": "center"})
+
+
+def _empty_chart(title: str = "", height: int = 320) -> go.Figure:
+    fig = go.Figure()
+    fig.update_layout(
+        title={"text": title, "font": {"color": COLORS["text_muted"], "size": 13}},
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"color": COLORS["text_secondary"], "size": 11},
+        margin=dict(l=40, r=20, t=40, b=40),
+        height=height,
+        xaxis={"gridcolor": "rgba(255,255,255,0.03)", "showgrid": True},
+        yaxis={"gridcolor": "rgba(255,255,255,0.03)", "showgrid": True},
+    )
+    return fig
+
+
+def _btn(text: str, id: str, primary: bool = True, full: bool = False) -> html.Button:
+    if primary:
+        bg = f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})"
+        border = "none"
+        color = "#fff"
+    else:
+        bg = COLORS["bg_input"]
+        border = f"1px solid {COLORS['border']}"
+        color = COLORS["text_primary"]
+    return html.Button(text, id=id, n_clicks=0, style={
+        "padding": "10px 24px",
+        "borderRadius": "10px",
+        "border": border,
+        "fontSize": "14px",
+        "fontWeight": "500",
+        "cursor": "pointer",
+        "transition": "all 0.2s",
+        "width": "100%" if full else "auto",
+        "background": bg,
+        "color": color,
+        "fontFamily": FONT_UI,
+    })
+
+
+def _input_field(label: str, id: str, value: str = "",
+                 type: str = "text", options: list = None) -> html.Div:
+    input_style = {
+        "width": "100%", "padding": "10px 14px",
+        "borderRadius": "10px", "border": f"1px solid {COLORS['border']}",
+        "backgroundColor": COLORS["bg_input"],
+        "color": COLORS["text_primary"],
+        "fontSize": "13px", "outline": "none",
+        "fontFamily": FONT_UI,
+        "transition": "border-color 0.2s",
+    }
+    control = dcc.Input(
+        id=id, type=type, value=value,
+        style=input_style,
+    ) if options is None else dcc.Dropdown(
+        id=id, options=options, value=value,
+        style={
+            "color": "#000",
+            "borderRadius": "10px",
+        },
+    )
+    return html.Div([
+        html.Label(label, style={
+            "fontSize": "11px", "fontWeight": "600",
+            "color": COLORS["text_secondary"],
+            "textTransform": "uppercase",
+            "letterSpacing": "0.5px",
+            "marginBottom": "6px", "display": "block",
+        }),
+        control,
+    ], style={"marginBottom": "12px"})
+
+
+def _data_table(headers: list, rows: list, empty_msg: str = "暂无数据") -> html.Div:
+    if not rows:
+        return html.Div(empty_msg, style={
+            "color": COLORS["text_muted"], "textAlign": "center",
+            "padding": "20px", "fontSize": "13px",
+        })
+
+    header_row = html.Tr([
+        html.Th(h, style={
+            "padding": "10px 14px", "fontSize": "11px",
+            "color": COLORS["text_muted"], "textAlign": "left",
+            "borderBottom": f"1px solid {COLORS['border']}",
+            "textTransform": "uppercase", "letterSpacing": "0.5px",
+        }) for h in headers
+    ])
+
+    body_rows = []
+    for i, row in enumerate(rows):
+        bg = "rgba(255,255,255,0.02)" if i % 2 == 0 else "transparent"
+        body_rows.append(html.Tr(row, style={"backgroundColor": bg}))
+
+    return html.Div([
+        html.Table([
+            html.Thead(header_row),
+            html.Tbody(body_rows),
+        ], style={"width": "100%", "borderCollapse": "collapse"}),
+    ])
+
+
+def _sidebar() -> html.Div:
+    nav_links = []
+    for i, item in enumerate(NAV_ITEMS):
+        nav_links.append(
+            html.Button(
+                f"{item['icon']}  {item['label']}",
+                id=f"nav-{item['id']}",
+                n_clicks=0,
+                className="nav-btn active" if i == 0 else "nav-btn",
+            )
+        )
+
+    return html.Div([
+        html.Div([
+            html.Div("⚡", style={"fontSize": "26px"}),
+            html.Div([
+                html.Div("量化引擎", style={
+                    "fontSize": "17px", "fontWeight": "700",
+                    "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
+                    "WebkitBackgroundClip": "text",
+                    "WebkitTextFillColor": "transparent",
+                    "lineHeight": "1.2",
+                }),
+                html.Div("专业版", style={
+                    "fontSize": "10px", "color": COLORS["text_muted"],
+                    "letterSpacing": "2.5px", "textTransform": "uppercase",
+                }),
+            ]),
+        ], style={
+            "padding": "24px 20px 28px",
+            "display": "flex", "alignItems": "center", "gap": "12px",
+            "borderBottom": f"1px solid {COLORS['border']}",
+        }),
+
+        html.Div(nav_links, style={"padding": "12px 0", "flex": "1"}),
+
+        html.Div([
+            html.Div([
+                html.Span("●", style={
+                    "color": COLORS["success"], "fontSize": "7px",
+                    "animation": "pulse 2s ease-in-out infinite",
+                }),
+                html.Span("系统运行中", style={
+                    "fontSize": "11px", "color": COLORS["text_muted"],
+                }),
+            ], style={"display": "flex", "alignItems": "center", "gap": "6px"}),
+            html.Div("v0.1.0", style={
+                "fontSize": "11px", "color": COLORS["text_muted"],
+                "fontFamily": FONT_MONO,
+            }),
+        ], style={
+            "textAlign": "center", "padding": "16px 20px",
+            "borderTop": f"1px solid {COLORS['border']}",
+            "display": "flex", "justifyContent": "space-between",
+            "alignItems": "center",
+        }),
+    ], style={
+        "position": "fixed", "left": 0, "top": 0,
+        "width": f"{SIDEBAR_WIDTH}px", "height": "100vh",
+        "backgroundColor": COLORS["bg_sidebar"],
+        "borderRight": f"1px solid {COLORS['border']}",
+        "display": "flex", "flexDirection": "column",
+        "zIndex": 100,
+        "backdropFilter": "blur(8px)",
+    })
+
+
+def _header() -> html.Div:
+    return html.Div([
+        html.Div([
+            html.Div(id="page-title", style={
+                "fontSize": "22px", "fontWeight": "700",
+                "color": COLORS["text_primary"],
+                "fontFamily": FONT_UI,
+                "letterSpacing": "-0.3px",
+            }),
+            html.Div([
+                html.Div(id="live-clock", style={
+                    "fontSize": "13px", "color": COLORS["text_muted"],
+                    "fontFamily": FONT_MONO,
+                }),
+                html.Div([
+                    html.Span("●", style={
+                        "color": COLORS["success"], "fontSize": "7px",
+                        "animation": "pulse 2s ease-in-out infinite",
+                    }),
+                    html.Span("系统运行中", style={
+                        "fontSize": "12px", "color": COLORS["text_secondary"],
+                    }),
+                ], style={"display": "flex", "alignItems": "center", "gap": "6px"}),
+            ], style={"display": "flex", "alignItems": "center", "gap": "20px"}),
+        ], style={
+            "display": "flex", "justifyContent": "space-between",
+            "alignItems": "center",
+            "marginBottom": "10px",
+        }),
+
+        html.Div(id="ticker-bar", style={
+            "display": "flex", "alignItems": "center", "gap": "16px",
+            "padding": "10px 16px",
+            "background": "rgba(6,10,18,0.6)",
+            "borderRadius": "12px",
+            "border": f"1px solid {COLORS['border']}",
+            "minHeight": "36px",
+            "fontSize": "13px",
+            "color": COLORS["text_muted"],
+        }),
+    ], style={
+        "padding": "16px 28px 0",
+        "borderBottom": f"1px solid {COLORS['border']}",
+        "backgroundColor": "rgba(12,18,30,0.6)",
+        "backdropFilter": "blur(8px)",
+    })
+
+
+def _page_overview() -> html.Div:
+    return html.Div([
+        html.Div([
+            _kpi_card("总资产", "¥100,000.00", "初始资金 ¥100,000",
+                      icon="💰", delta="+0.00%"),
+            _kpi_card("当日盈亏", "¥0.00", "未实现",
+                      color=COLORS["profit"], icon="📈", delta="+0.00%"),
+            _kpi_card("最大回撤", "0.00%", "当前回撤 0.00%",
+                      color=COLORS["text_primary"], icon="📉"),
+            _kpi_card("夏普比率", "—", "年化 0.00%",
+                      color=COLORS["info"], icon="🎯"),
+        ], style={
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(220px, 1fr))",
+            "gap": "16px", "marginBottom": "24px",
+        }),
+
+        _section("权益曲线", icon="📊",
+            children=dcc.Graph(
+                id="overview-equity-chart",
+                figure=_empty_chart("暂无回测数据，请前往「回测」页面运行"),
+                style={"height": "360px"},
+                config={"displayModeBar": False},
+            ),
+        ),
+
+        html.Div([
+            _section("当前持仓", icon="💼",
+                children=html.Div(id="overview-positions",
+                    children=[
+                        html.Div("暂无持仓", style={
+                            "color": COLORS["text_muted"],
+                            "textAlign": "center", "padding": "40px 0",
+                            "fontSize": "13px",
+                        }),
+                    ],
+                ),
+            ),
+            _section("最近交易", icon="🔄",
+                children=html.Div(id="overview-trades",
+                    children=[
+                        html.Div("暂无交易记录", style={
+                            "color": COLORS["text_muted"],
+                            "textAlign": "center", "padding": "40px 0",
+                            "fontSize": "13px",
+                        }),
+                    ],
+                ),
+            ),
+        ], style={
+            "display": "grid",
+            "gridTemplateColumns": "1fr 1fr",
+            "gap": "16px",
+        }),
+    ])
+
 
 def _page_backtest() -> html.Div:
     return html.Div([
-        # 配置面板
         _section("回测配置", icon="⚙️", children=[
             html.Div([
                 _input_field("策略", "bt-strategy", "dual_thrust",
@@ -536,11 +525,14 @@ def _page_backtest() -> html.Div:
                       "gap": "12px"}),
             html.Div([
                 html.Button("▶ 运行回测", id="bt-run-btn", n_clicks=0, style={
-                    "padding": "12px 32px", "background": COLORS["accent"],
-                    "color": "#fff", "border": "none", "borderRadius": "8px",
+                    "padding": "12px 32px",
+                    "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
+                    "color": "#fff", "border": "none", "borderRadius": "10px",
                     "fontSize": "15px", "fontWeight": "600",
-                    "cursor": "pointer", "transition": "all 0.2s",
+                    "cursor": "pointer", "transition": "all 0.25s ease",
                     "display": "flex", "alignItems": "center", "gap": "8px",
+                    "fontFamily": FONT_UI,
+                    "boxShadow": f"0 4px 16px {COLORS['accent_glow']}",
                 }),
                 html.Div(id="bt-status", style={
                     "fontSize": "13px", "color": COLORS["text_muted"],
@@ -551,24 +543,21 @@ def _page_backtest() -> html.Div:
                        "marginTop": "16px"}),
         ]),
 
-        # 进度条
         html.Div(id="bt-progress", style={"display": "none"},
             children=[
                 html.Div(style={
-                    "height": "4px", "background": COLORS["accent"],
-                    "borderRadius": "2px",
+                    "height": "4px", "borderRadius": "2px",
+                    "background": f"linear-gradient(90deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
                     "animation": "progress 2s ease-in-out infinite",
                 }),
             ]
         ),
 
-        # 结果面板（初始隐藏）
         html.Div(id="bt-results", style={"display": "none"}),
     ])
 
 
 def _build_backtest_results(report: Dict) -> html.Div:
-    """从回测报告构建结果面板。"""
     if not report or "error" in report:
         return html.Div([
             html.Div("⚠️ 回测失败", style={
@@ -581,7 +570,6 @@ def _build_backtest_results(report: Dict) -> html.Div:
         ])
 
     return html.Div([
-        # 指标行
         html.Div([
             _kpi_card("总收益率",
                 f"{report.get('total_return_pct', 0):+.2f}%",
@@ -609,7 +597,6 @@ def _build_backtest_results(report: Dict) -> html.Div:
             "gap": "12px", "marginBottom": "20px",
         }),
 
-        # 权益曲线
         _section("权益曲线", icon="📊",
             children=dcc.Graph(
                 figure=_build_equity_figure(report),
@@ -618,7 +605,6 @@ def _build_backtest_results(report: Dict) -> html.Div:
             ),
         ),
 
-        # 交易明细表
         _section("交易明细", icon="📋",
             children=_build_trades_table(report),
         ),
@@ -626,7 +612,6 @@ def _build_backtest_results(report: Dict) -> html.Div:
 
 
 def _build_equity_figure(report: Dict) -> go.Figure:
-    """从报告构建权益曲线图。"""
     fig = go.Figure()
 
     equity = report.get("equity_curve", [])
@@ -638,10 +623,9 @@ def _build_equity_figure(report: Dict) -> go.Figure:
             mode="lines", name="权益",
             line=dict(color=COLORS["accent"], width=2),
             fill="tozeroy",
-            fillcolor="rgba(59,130,246,0.08)",
+            fillcolor=COLORS["accent_glow"],
         ))
 
-        # 初始资金参考线
         init = report.get("initial_capital", values[0]) if values else 0
         fig.add_hline(y=init, line_dash="dash",
                       line_color=COLORS["text_muted"],
@@ -654,8 +638,8 @@ def _build_equity_figure(report: Dict) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
         font={"color": COLORS["text_secondary"], "size": 11},
         margin=dict(l=40, r=20, t=20, b=40),
-        xaxis={"gridcolor": "rgba(255,255,255,0.05)"},
-        yaxis={"gridcolor": "rgba(255,255,255,0.05)",
+        xaxis={"gridcolor": "rgba(255,255,255,0.03)"},
+        yaxis={"gridcolor": "rgba(255,255,255,0.03)",
                "tickformat": ","},
         hovermode="x unified",
         showlegend=False,
@@ -664,7 +648,6 @@ def _build_equity_figure(report: Dict) -> go.Figure:
 
 
 def _build_trades_table(report: Dict) -> html.Div:
-    """构建交易明细表。"""
     trades = report.get("trades", [])
     if not trades:
         return html.Div("暂无交易记录", style={
@@ -673,78 +656,62 @@ def _build_trades_table(report: Dict) -> html.Div:
         })
 
     rows = []
-    for t in trades[-50:]:  # 最近 50 笔
+    for i, t in enumerate(trades[-50:]):
         pnl = t.get("pnl", 0)
+        bg = "rgba(255,255,255,0.02)" if i % 2 == 0 else "transparent"
         rows.append(html.Tr([
             html.Td(t.get("symbol", ""),
-                    style={"padding": "6px 12px", "fontSize": "12px"}),
+                    style={"padding": "8px 14px", "fontSize": "12px", "fontFamily": FONT_MONO}),
             html.Td("买入" if t.get("side") in ("BUY", "buy") else "卖出",
-                    style={"padding": "6px 12px", "fontSize": "12px",
-                           "color": COLORS["profit"] if t.get("side") in ("BUY", "buy") else COLORS["danger"]}),
-            html.Td(f"{t.get('quantity', 0):.4f}",
-                    style={"padding": "6px 12px", "fontSize": "12px"}),
-            html.Td(f"{t.get('entry_price', 0):.2f}",
-                    style={"padding": "6px 12px", "fontSize": "12px"}),
-            html.Td(f"{t.get('exit_price', 0):.2f}",
-                    style={"padding": "6px 12px", "fontSize": "12px"}),
-            html.Td(f"{pnl:+.2f}",
-                    style={"padding": "6px 12px", "fontSize": "12px",
-                           "color": COLORS["profit"] if pnl >= 0 else COLORS["danger"],
+                    style={"padding": "8px 14px", "fontSize": "12px",
+                           "color": COLORS["profit"] if t.get("side") in ("BUY", "buy") else COLORS["danger"],
                            "fontWeight": "600"}),
-        ]))
+            html.Td(f"{t.get('quantity', 0):.4f}",
+                    style={"padding": "8px 14px", "fontSize": "12px", "fontFamily": FONT_MONO, "textAlign": "right"}),
+            html.Td(f"{t.get('entry_price', 0):.2f}",
+                    style={"padding": "8px 14px", "fontSize": "12px", "fontFamily": FONT_MONO, "textAlign": "right"}),
+            html.Td(f"{t.get('exit_price', 0):.2f}",
+                    style={"padding": "8px 14px", "fontSize": "12px", "fontFamily": FONT_MONO, "textAlign": "right"}),
+            html.Td(f"{pnl:+.2f}",
+                    style={"padding": "8px 14px", "fontSize": "12px",
+                           "color": COLORS["profit"] if pnl >= 0 else COLORS["danger"],
+                           "fontWeight": "600", "fontFamily": FONT_MONO, "textAlign": "right"}),
+        ], style={"backgroundColor": bg}))
 
     return html.Div([
         html.Table([
             html.Thead(html.Tr([
-                html.Th("标的", style={"padding": "8px 12px", "fontSize": "11px",
+                html.Th("标的", style={"padding": "10px 14px", "fontSize": "11px",
                           "color": COLORS["text_muted"], "textAlign": "left",
-                          "borderBottom": f"1px solid {COLORS['border']}"}),
-                html.Th("方向", style={"padding": "8px 12px", "fontSize": "11px",
+                          "borderBottom": f"1px solid {COLORS['border']}",
+                          "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                html.Th("方向", style={"padding": "10px 14px", "fontSize": "11px",
                           "color": COLORS["text_muted"], "textAlign": "left",
-                          "borderBottom": f"1px solid {COLORS['border']}"}),
-                html.Th("数量", style={"padding": "8px 12px", "fontSize": "11px",
+                          "borderBottom": f"1px solid {COLORS['border']}",
+                          "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                html.Th("数量", style={"padding": "10px 14px", "fontSize": "11px",
                           "color": COLORS["text_muted"], "textAlign": "right",
-                          "borderBottom": f"1px solid {COLORS['border']}"}),
-                html.Th("入场价", style={"padding": "8px 12px", "fontSize": "11px",
+                          "borderBottom": f"1px solid {COLORS['border']}",
+                          "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                html.Th("入场价", style={"padding": "10px 14px", "fontSize": "11px",
                           "color": COLORS["text_muted"], "textAlign": "right",
-                          "borderBottom": f"1px solid {COLORS['border']}"}),
-                html.Th("出场价", style={"padding": "8px 12px", "fontSize": "11px",
+                          "borderBottom": f"1px solid {COLORS['border']}",
+                          "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                html.Th("出场价", style={"padding": "10px 14px", "fontSize": "11px",
                           "color": COLORS["text_muted"], "textAlign": "right",
-                          "borderBottom": f"1px solid {COLORS['border']}"}),
-                html.Th("盈亏", style={"padding": "8px 12px", "fontSize": "11px",
+                          "borderBottom": f"1px solid {COLORS['border']}",
+                          "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                html.Th("盈亏", style={"padding": "10px 14px", "fontSize": "11px",
                           "color": COLORS["text_muted"], "textAlign": "right",
-                          "borderBottom": f"1px solid {COLORS['border']}"}),
+                          "borderBottom": f"1px solid {COLORS['border']}",
+                          "textTransform": "uppercase", "letterSpacing": "0.5px"}),
             ])),
             html.Tbody(rows),
         ], style={"width": "100%", "borderCollapse": "collapse"}),
         html.Div(f"共 {len(trades)} 笔交易，仅显示最近 50 笔",
                  style={"color": COLORS["text_muted"], "fontSize": "11px",
-                        "textAlign": "right", "padding": "8px 12px"}),
+                        "textAlign": "right", "padding": "8px 14px"}),
     ])
-
-
-# ════════════════════════════════════════════════════════════
-#  页面：策略
-# ════════════════════════════════════════════════════════════
-
-STRATEGY_DETAILS = [
-    ("dual_thrust", "Dual Thrust", "区间突破", "经典突破策略，基于前 N 日最高/最低价计算突破区间，K1/K2 参数控制突破敏感度。"),
-    ("turtle", "Turtle", "趋势跟踪", "海龟交易策略，唐奇安通道突破入场，ATR 浮动止损，趋势跟踪经典之作。"),
-    ("bollinger", "Bollinger", "均值回归", "布林带上下轨触发反转信号，RSI 过滤确认，适合震荡行情。"),
-    ("dual_ma", "Dual MA", "趋势跟踪", "双均线金叉死叉信号，配合网格仓位管理，简单有效。"),
-    ("r_breaker", "R Breaker", "突破/反转", "基于前日价格的 6 级关键价位系统，突破与反转双向交易。"),
-    ("grid_ma", "Grid+MA", "网格交易", "MA 趋势方向过滤 + 网格分层建仓，下跌加仓上涨减仓。"),
-    ("simple_mm", "Simple MM", "做市商", "中间价双侧挂限价单，赚取买卖价差，适合低波动品种。"),
-    ("panic_reversal", "Panic Reversal", "恐慌反转", "检测恐慌性下跌 + 成交量飙升 + RSI 恢复确认，情绪反转入场。"),
-    ("low_vol_defense", "Low Vol Defense", "波动防御", "高波动率自动减仓至 50%，低波动率恢复正常仓位。"),
-    ("multi_factor", "Multi Factor", "多因子选股", "动量 + 波动率 + RSI + MACD 多因子等权打分，选择综合得分最高的标的。"),
-    ("sector_rotation", "Sector Rotation", "行业轮动", "计算各板块动量强度，定期调仓至动量最强的板块。"),
-    ("aberration", "Aberration", "波动率通道", "布林带自适应通道，价格触及外轨反向开仓，回归中轨止盈。"),
-    ("pivot_point", "Pivot Point", "枢轴点", "经典日内枢轴点系统，S1/S2 支撑买入，R1/R2 阻力卖出。"),
-    ("fei_ali", "Fei Ali", "四价突破", "基于昨高/昨低/昨收/昨开的四价突破系统，突破关键价位入场。"),
-    ("dynamic_breakout_ii", "Dynamic Breakout II", "动态突破", "ATR 动态调整回溯周期，高波动时快速反应，低波动时稳定持仓。"),
-    ("rsi_reversal", "RSI Reversal", "RSI反转", "RSI 超买超卖阈值反转交易，超卖买入超买卖出。"),
-]
 
 
 def _page_strategies() -> html.Div:
@@ -754,25 +721,24 @@ def _page_strategies() -> html.Div:
             html.Div([
                 html.Div([
                     html.Span(stype, style={
-                        "fontSize": "11px", "fontWeight": "500",
-                        "padding": "2px 10px", "borderRadius": "10px",
-                        "background": "rgba(59,130,246,0.15)",
+                        "fontSize": "11px", "fontWeight": "600",
+                        "padding": "3px 12px", "borderRadius": "10px",
+                        "background": COLORS["accent_glow"],
                         "color": COLORS["accent"],
+                        "letterSpacing": "0.5px",
                     }),
-                ], style={"marginBottom": "8px"}),
+                ], style={"marginBottom": "10px"}),
                 html.H4(name, style={
                     "fontSize": "15px", "fontWeight": "600",
-                    "color": COLORS["text_primary"], "margin": "0 0 6px 0",
+                    "color": COLORS["text_primary"], "margin": "0 0 8px 0",
                 }),
                 html.P(desc, style={
                     "fontSize": "12px", "color": COLORS["text_secondary"],
-                    "lineHeight": "1.6", "margin": 0,
+                    "lineHeight": "1.7", "margin": 0,
                 }),
             ], style={
-                "backgroundColor": COLORS["bg_card"],
-                "border": f"1px solid {COLORS['border']}",
-                "borderRadius": "12px", "padding": "20px",
-                "transition": "all 0.2s",
+                **_card_style(),
+                "transition": "all 0.25s ease",
             })
         )
 
@@ -788,10 +754,6 @@ def _page_strategies() -> html.Div:
         }),
     ])
 
-
-# ════════════════════════════════════════════════════════════
-#  页面：交易
-# ════════════════════════════════════════════════════════════
 
 def _page_trading() -> html.Div:
     return html.Div([
@@ -814,18 +776,28 @@ def _page_trading() -> html.Div:
                 html.Div([
                     html.Button("▶ 启动执行器", id="exec-start-btn",
                                 n_clicks=0, style={
-                        "padding": "10px 24px", "background": COLORS["success"],
-                        "color": "#fff", "border": "none", "borderRadius": "8px",
+                        "padding": "10px 24px",
+                        "background": f"linear-gradient(135deg, {COLORS['success']}, #16a34a)",
+                        "color": "#fff", "border": "none", "borderRadius": "10px",
                         "fontSize": "14px", "fontWeight": "500", "cursor": "pointer",
+                        "transition": "all 0.25s ease",
+                        "fontFamily": FONT_UI,
                     }),
                     html.Button("⏹ 停止执行器", id="exec-stop-btn",
                                 n_clicks=0, style={
-                        "padding": "10px 24px", "background": COLORS["danger"],
-                        "color": "#fff", "border": "none", "borderRadius": "8px",
+                        "padding": "10px 24px",
+                        "background": f"linear-gradient(135deg, {COLORS['danger']}, #dc2626)",
+                        "color": "#fff", "border": "none", "borderRadius": "10px",
                         "fontSize": "14px", "fontWeight": "500", "cursor": "pointer",
                         "marginLeft": "10px",
+                        "transition": "all 0.25s ease",
+                        "fontFamily": FONT_UI,
                     }),
                 ], style={"display": "flex", "alignItems": "center"}),
+                html.Div(id="exec-status-text", style={
+                    "fontSize": "13px", "color": COLORS["text_muted"],
+                    "marginTop": "12px",
+                }),
             ]),
         ),
         _section("当前持仓", icon="💼",
@@ -837,10 +809,6 @@ def _page_trading() -> html.Div:
     ])
 
 
-# ════════════════════════════════════════════════════════════
-#  页面：AI分析
-# ════════════════════════════════════════════════════════════
-
 def _page_ai() -> html.Div:
     return html.Div([
         _section("AI 新闻情感分析", icon="🧠",
@@ -848,10 +816,14 @@ def _page_ai() -> html.Div:
                 html.Div([
                     html.Button("📰 获取最新新闻并分析", id="ai-fetch-btn",
                                n_clicks=0, style={
-                                   "padding": "10px 24px", "borderRadius": "8px",
-                                   "border": "none", "background": COLORS["accent"],
+                                   "padding": "10px 24px", "borderRadius": "10px",
+                                   "border": "none",
+                                   "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
                                    "color": "#fff", "fontSize": "13px",
                                    "fontWeight": "500", "cursor": "pointer",
+                                   "transition": "all 0.25s ease",
+                                   "fontFamily": FONT_UI,
+                                   "boxShadow": f"0 4px 16px {COLORS['accent_glow']}",
                                }),
                     html.Span(id="ai-status", children="点击按钮获取最新新闻与 AI 分析",
                              style={"color": COLORS["text_muted"], "fontSize": "12px",
@@ -886,22 +858,6 @@ def _page_ai() -> html.Div:
     ])
 
 
-# ════════════════════════════════════════════════════════════
-#  页面：数据下载
-# ════════════════════════════════════════════════════════════
-
-DOWNLOAD_SYMBOLS = [
-    {"label": "BTC/USDT", "value": "BTC/USDT"},
-    {"label": "ETH/USDT", "value": "ETH/USDT"},
-    {"label": "SOL/USDT", "value": "SOL/USDT"},
-]
-
-DOWNLOAD_MARKETS = [
-    {"label": "加密货币", "value": "crypto"},
-    {"label": "A 股", "value": "a_share"},
-]
-
-
 def _page_data() -> html.Div:
     return html.Div([
         _section("数据下载", icon="📥", children=[
@@ -915,10 +871,13 @@ def _page_data() -> html.Div:
                       "gap": "12px"}),
             html.Div([
                 html.Button("⬇ 开始下载", id="dl-run-btn", n_clicks=0, style={
-                    "padding": "12px 32px", "background": COLORS["accent"],
-                    "color": "#fff", "border": "none", "borderRadius": "8px",
+                    "padding": "12px 32px",
+                    "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
+                    "color": "#fff", "border": "none", "borderRadius": "10px",
                     "fontSize": "15px", "fontWeight": "600",
-                    "cursor": "pointer", "transition": "all 0.2s",
+                    "cursor": "pointer", "transition": "all 0.25s ease",
+                    "fontFamily": FONT_UI,
+                    "boxShadow": f"0 4px 16px {COLORS['accent_glow']}",
                 }),
                 html.Div(id="dl-status", style={
                     "fontSize": "13px", "color": COLORS["text_muted"],
@@ -932,16 +891,21 @@ def _page_data() -> html.Div:
             children=html.Div([
                 html.Table([
                     html.Thead(html.Tr([
-                        html.Th("数据源", style={"padding": "8px 12px", "fontSize": "11px",
-                                  "color": COLORS["text_muted"], "textAlign": "left"}),
-                        html.Th("交易对/代码", style={"padding": "8px 12px", "fontSize": "11px",
-                                  "color": COLORS["text_muted"], "textAlign": "left"}),
-                        html.Th("周期", style={"padding": "8px 12px", "fontSize": "11px",
-                                  "color": COLORS["text_muted"], "textAlign": "left"}),
-                        html.Th("条数", style={"padding": "8px 12px", "fontSize": "11px",
-                                  "color": COLORS["text_muted"], "textAlign": "right"}),
-                        html.Th("更新时间", style={"padding": "8px 12px", "fontSize": "11px",
-                                  "color": COLORS["text_muted"], "textAlign": "right"}),
+                        html.Th("数据源", style={"padding": "10px 14px", "fontSize": "11px",
+                                  "color": COLORS["text_muted"], "textAlign": "left",
+                                  "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                        html.Th("交易对/代码", style={"padding": "10px 14px", "fontSize": "11px",
+                                  "color": COLORS["text_muted"], "textAlign": "left",
+                                  "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                        html.Th("周期", style={"padding": "10px 14px", "fontSize": "11px",
+                                  "color": COLORS["text_muted"], "textAlign": "left",
+                                  "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                        html.Th("条数", style={"padding": "10px 14px", "fontSize": "11px",
+                                  "color": COLORS["text_muted"], "textAlign": "right",
+                                  "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                        html.Th("更新时间", style={"padding": "10px 14px", "fontSize": "11px",
+                                  "color": COLORS["text_muted"], "textAlign": "right",
+                                  "textTransform": "uppercase", "letterSpacing": "0.5px"}),
                     ])),
                     html.Tbody(id="dl-cache-table",
                         children=[html.Tr([
@@ -955,37 +919,57 @@ def _page_data() -> html.Div:
     ])
 
 
-# ════════════════════════════════════════════════════════════
-#  页面：设置
-# ════════════════════════════════════════════════════════════
+def _page_logs() -> html.Div:
+    return html.Div([
+        _section("系统日志", icon="📝",
+            children=html.Div(id="logs-system", style={
+                "fontFamily": FONT_MONO,
+                "fontSize": "12px", "lineHeight": "1.8",
+                "maxHeight": "500px", "overflowY": "scroll",
+            }, children=[
+                html.Div(datetime.now().strftime("[%H:%M:%S] 系统就绪"),
+                         style={"color": COLORS["text_secondary"]}),
+            ]),
+        ),
+        _section("交易记录", icon="🔄",
+            children=html.Div(id="logs-trades",
+                children=[html.Div("暂无交易记录", style={
+                    "color": COLORS["text_muted"], "textAlign": "center",
+                    "padding": "40px 0", "fontSize": "13px",
+                })]),
+        ),
+    ])
+
 
 def _page_settings() -> html.Div:
-    """设置页面 - API 密钥配置等。"""
     return html.Div([
         _section("API 密钥配置", icon="🔑", children=[
             html.Div([
                 html.Div([
                     html.Label("DeepSeek API Key", style={
-                        "fontSize": "13px", "fontWeight": "500",
+                        "fontSize": "13px", "fontWeight": "600",
                         "color": COLORS["text_primary"], "marginBottom": "6px",
                         "display": "block",
+                        "textTransform": "uppercase", "letterSpacing": "0.5px",
                     }),
                     html.Div([
                         dcc.Input(id="cfg-deepseek-key", type="password",
                                   placeholder="sk-...",
                                   style={
                                       "flex": "1", "padding": "10px 14px",
-                                      "borderRadius": "8px", "border": f"1px solid {COLORS['border']}",
+                                      "borderRadius": "10px", "border": f"1px solid {COLORS['border']}",
                                       "background": COLORS["bg_input"],
                                       "color": COLORS["text_primary"], "fontSize": "14px",
-                                      "outline": "none",
+                                      "outline": "none", "fontFamily": FONT_MONO,
                                   }),
                         html.Button("保存", id="save-deepseek-key", n_clicks=0,
                                    style={
-                                       "padding": "10px 20px", "borderRadius": "8px",
-                                       "border": "none", "background": COLORS["accent"],
+                                       "padding": "10px 20px", "borderRadius": "10px",
+                                       "border": "none",
+                                       "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
                                        "color": "#fff", "fontSize": "13px",
                                        "cursor": "pointer", "whiteSpace": "nowrap",
+                                       "fontFamily": FONT_UI,
                                    }),
                     ], style={"display": "flex", "gap": "8px"}),
                     html.Div(id="deepseek-key-status", style={
@@ -996,26 +980,29 @@ def _page_settings() -> html.Div:
 
                 html.Div([
                     html.Label("OpenAI API Key（可选）", style={
-                        "fontSize": "13px", "fontWeight": "500",
+                        "fontSize": "13px", "fontWeight": "600",
                         "color": COLORS["text_primary"], "marginBottom": "6px",
                         "display": "block",
+                        "textTransform": "uppercase", "letterSpacing": "0.5px",
                     }),
                     html.Div([
                         dcc.Input(id="cfg-openai-key", type="password",
                                   placeholder="sk-...",
                                   style={
                                       "flex": "1", "padding": "10px 14px",
-                                      "borderRadius": "8px", "border": f"1px solid {COLORS['border']}",
+                                      "borderRadius": "10px", "border": f"1px solid {COLORS['border']}",
                                       "background": COLORS["bg_input"],
                                       "color": COLORS["text_primary"], "fontSize": "14px",
-                                      "outline": "none",
+                                      "outline": "none", "fontFamily": FONT_MONO,
                                   }),
                         html.Button("保存", id="save-openai-key", n_clicks=0,
                                    style={
-                                       "padding": "10px 20px", "borderRadius": "8px",
-                                       "border": "none", "background": COLORS["accent"],
+                                       "padding": "10px 20px", "borderRadius": "10px",
+                                       "border": "none",
+                                       "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
                                        "color": "#fff", "fontSize": "13px",
                                        "cursor": "pointer", "whiteSpace": "nowrap",
+                                       "fontFamily": FONT_UI,
                                    }),
                     ], style={"display": "flex", "gap": "8px"}),
                     html.Div(id="openai-key-status", style={
@@ -1025,10 +1012,44 @@ def _page_settings() -> html.Div:
                 ], style={"marginBottom": "20px"}),
 
                 html.Div([
+                    html.Label("Anthropic API Key（可选）", style={
+                        "fontSize": "13px", "fontWeight": "600",
+                        "color": COLORS["text_primary"], "marginBottom": "6px",
+                        "display": "block",
+                        "textTransform": "uppercase", "letterSpacing": "0.5px",
+                    }),
+                    html.Div([
+                        dcc.Input(id="cfg-anthropic-key", type="password",
+                                  placeholder="sk-ant-...",
+                                  style={
+                                      "flex": "1", "padding": "10px 14px",
+                                      "borderRadius": "10px", "border": f"1px solid {COLORS['border']}",
+                                      "background": COLORS["bg_input"],
+                                      "color": COLORS["text_primary"], "fontSize": "14px",
+                                      "outline": "none", "fontFamily": FONT_MONO,
+                                  }),
+                        html.Button("保存", id="save-anthropic-key", n_clicks=0,
+                                   style={
+                                       "padding": "10px 20px", "borderRadius": "10px",
+                                       "border": "none",
+                                       "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
+                                       "color": "#fff", "fontSize": "13px",
+                                       "cursor": "pointer", "whiteSpace": "nowrap",
+                                       "fontFamily": FONT_UI,
+                                   }),
+                    ], style={"display": "flex", "gap": "8px"}),
+                    html.Div(id="anthropic-key-status", style={
+                        "fontSize": "12px", "color": COLORS["text_muted"],
+                        "marginTop": "6px",
+                    }),
+                ], style={"marginBottom": "20px"}),
+
+                html.Div([
                     html.Label("数据源配置", style={
-                        "fontSize": "13px", "fontWeight": "500",
+                        "fontSize": "13px", "fontWeight": "600",
                         "color": COLORS["text_primary"], "marginBottom": "10px",
                         "display": "block",
+                        "textTransform": "uppercase", "letterSpacing": "0.5px",
                     }),
                     html.Div([
                         html.Span("行情数据:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
@@ -1046,7 +1067,7 @@ def _page_settings() -> html.Div:
                                  style={"color": COLORS["text_muted"], "fontSize": "12px", "marginLeft": "8px"}),
                     ]),
                 ], style={
-                    "padding": "16px", "borderRadius": "8px",
+                    "padding": "16px", "borderRadius": "12px",
                     "background": COLORS["bg_base"],
                     "border": f"1px solid {COLORS['border']}",
                 }),
@@ -1057,110 +1078,415 @@ def _page_settings() -> html.Div:
             html.Div([
                 html.Div([
                     html.Span("版本:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
-                    html.Span("0.1.0", style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px"}),
+                    html.Span("0.1.0", style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px", "fontFamily": FONT_MONO}),
                 ], style={"marginBottom": "6px"}),
                 html.Div([
                     html.Span("Python:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
                     html.Span(f"{sys.version.split()[0] if hasattr(sys, 'version') else '3.10+'}",
-                             style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px"}),
+                             style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px", "fontFamily": FONT_MONO}),
                 ], style={"marginBottom": "6px"}),
                 html.Div([
                     html.Span("内置策略:", style={"color": COLORS["text_secondary"], "fontSize": "13px"}),
-                    html.Span("16个", style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px"}),
+                    html.Span("16个", style={"color": COLORS["text_primary"], "fontSize": "13px", "marginLeft": "8px", "fontFamily": FONT_MONO}),
                 ]),
             ]),
         ]),
     ])
 
 
-def _page_logs() -> html.Div:
-    return html.Div([
-        html.Div([
-            _section("系统日志", icon="📝",
-                children=html.Div(id="logs-system", style={
-                    "fontFamily": "'JetBrains Mono', 'Consolas', monospace",
-                    "fontSize": "12px", "lineHeight": "1.8",
-                    "maxHeight": "500px", "overflowY": "scroll",
-                }, children=[
-                    html.Div(datetime.now().strftime("[%H:%M:%S] 系统就绪"),
-                             style={"color": COLORS["text_secondary"]}),
-                ]),
-            ),
-        ]),
-        html.Div([
-            _section("交易记录", icon="🔄",
-                children=html.Div(id="logs-trades",
-                    children=[html.Div("暂无交易记录", style={
-                        "color": COLORS["text_muted"], "textAlign": "center",
-                        "padding": "40px 0", "fontSize": "13px",
-                    })]),
-            ),
-        ]),
-    ])
+def create_dashboard(backtest_engine=None, strategy_registry=None,
+                     market_overview=None) -> dash.Dash:
+    set_globals(
+        backtest_engine=backtest_engine,
+        strategy_registry=strategy_registry,
+        market_overview=market_overview,
+    )
 
+    app = dash.Dash(
+        __name__,
+        title="量化引擎专业版",
+        update_title=None,
+    )
 
-# ════════════════════════════════════════════════════════════
-#  回调注册
-# ════════════════════════════════════════════════════════════
+    app.index_string = """<!DOCTYPE html>
+<html>
+<head>
+{%metas%}
+<title>{%title%}</title>
+{%favicon%}
+{%css%}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-base: #060a12;
+    --bg-card: rgba(12,18,30,0.85);
+    --bg-sidebar: #080d18;
+    --bg-input: #0e1525;
+    --border: rgba(30,41,59,0.5);
+    --border-hover: rgba(99,102,241,0.3);
+    --text-primary: #eef2f7;
+    --text-secondary: #8b9ab8;
+    --text-muted: #5a6a84;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-glow: rgba(99,102,241,0.12);
+    --success: #34d399;
+    --danger: #f87171;
+    --warning: #fbbf24;
+    --info: #22d3ee;
+    --gradient-start: #6366f1;
+    --gradient-end: #a855f7;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow-card: 0 4px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03);
+    --shadow-glow: 0 0 40px rgba(99,102,241,0.08);
+    --font-ui: 'DM Sans', 'Noto Sans SC', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --sidebar-w: 240px;
+}
 
-def _register_callbacks(app: dash.Dash):
-    """注册所有交互回调。"""
+* { box-sizing: border-box; }
 
-    # ── 侧边栏导航 ────────────────────────────────────
-    nav_ids = [f"nav-{item['id']}" for item in NAV_ITEMS]
-    page_map = {f"nav-{item['id']}": item['id'] for item in NAV_ITEMS}
-    title_map = {item['id']: item['label'] for item in NAV_ITEMS}
-    page_funcs = {
-        "overview": _page_overview,
-        "backtest": _page_backtest,
-        "strategies": _page_strategies,
-        "trading": _page_trading,
-        "ai": _page_ai,
-        "data": _page_data,
-        "logs": _page_logs,
-        "settings": _page_settings,
+body {
+    background: var(--bg-base);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Sidebar ─── */
+.nav-btn {
+    padding: 11px 18px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    margin: 2px 10px;
+    font-size: 13.5px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s cubic-bezier(.4,0,.2,1);
+    border-left: 3px solid transparent;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    width: calc(var(--sidebar-w) - 20px);
+    text-align: left;
+    font-family: var(--font-ui);
+    color: var(--text-muted);
+    position: relative;
+    overflow: hidden;
+}
+.nav-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.05));
+    transition: opacity 0.2s;
+}
+.nav-btn:hover {
+    color: var(--text-secondary);
+}
+.nav-btn:hover::before {
+    opacity: 1;
+}
+.nav-btn.active {
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+    color: #ffffff;
+    border-left: 3px solid var(--gradient-end);
+    box-shadow: 0 4px 20px rgba(99,102,241,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+    font-weight: 600;
+}
+.nav-btn.active::before { opacity: 0; }
+
+/* ─── Page transitions ─── */
+[id^="page-"] {
+    animation: pageFadeIn 0.35s cubic-bezier(.4,0,.2,1);
+}
+@keyframes pageFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Cards ─── */
+[id^="page-"] > div > div,
+[id^="page-"] > div > div > div {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+/* ─── KPI card gradient border ─── */
+[id^="page-"] > div > div:first-child > div {
+    position: relative;
+}
+[id^="page-"] > div > div:first-child > div::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, var(--gradient-start), var(--gradient-end));
+    opacity: 0.7;
+}
+
+/* ─── Section headers ─── */
+h3 {
+    letter-spacing: 0.8px !important;
+}
+
+/* ─── Buttons (primary) ─── */
+button[id$="-btn"], button[id$="-run-btn"] {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(.4,0,.2,1) !important;
+}
+button[id$="-btn"]:hover, button[id$="-run-btn"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(99,102,241,0.25) !important;
+}
+button[id$="-btn"]:active, button[id$="-run-btn"]:active {
+    transform: translateY(0);
+}
+
+/* ─── Inputs ─── */
+input, select {
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+input:focus, select:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+    outline: none !important;
+}
+
+/* ─── Tables ─── */
+table {
+    border-spacing: 0;
+}
+table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+table tbody tr {
+    transition: background 0.15s;
+}
+table tbody tr:hover {
+    background: rgba(99,102,241,0.04) !important;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(99,102,241,0.2);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(99,102,241,0.35);
+}
+
+/* ─── Animations ─── */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+@keyframes progress {
+    0% { width: 0%; }
+    50% { width: 100%; }
+    100% { width: 0%; }
+}
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* ─── Strategy cards ─── */
+[id="page-strategies"] > div > div > div {
+    transition: transform 0.25s cubic-bezier(.4,0,.2,1), box-shadow 0.25s;
+}
+[id="page-strategies"] > div > div > div:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(99,102,241,0.15) !important;
+}
+
+/* ─── Toast ─── */
+[id="toast-container"] > div {
+    animation: toastSlideIn 0.4s cubic-bezier(.4,0,.2,1);
+}
+@keyframes toastSlideIn {
+    from { opacity: 0; transform: translateX(40px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── Background subtle noise ─── */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var pageMap = {
+        'nav-overview': 'overview', 'nav-backtest': 'backtest',
+        'nav-strategies': 'strategies', 'nav-trading': 'trading',
+        'nav-ai': 'ai', 'nav-data': 'data',
+        'nav-logs': 'logs', 'nav-settings': 'settings'
+    };
+    var titleMap = {
+        'overview': '总览', 'backtest': '回测', 'strategies': '策略',
+        'trading': '交易', 'ai': 'AI分析', 'data': '数据',
+        'logs': '日志', 'settings': '设置'
+    };
+    var allPages = ['overview','backtest','strategies','trading','ai','data','logs','settings'];
+
+    function switchPage(pageId) {
+        allPages.forEach(function(pid) {
+            var el = document.getElementById('page-' + pid);
+            if (el) {
+                if (pid === pageId) {
+                    el.style.display = 'block';
+                    el.style.animation = 'none';
+                    el.offsetHeight;
+                    el.style.animation = 'pageFadeIn 0.35s cubic-bezier(.4,0,.2,1)';
+                } else {
+                    el.style.display = 'none';
+                }
+            }
+        });
+        allPages.forEach(function(pid) {
+            var btn = document.getElementById('nav-' + pid);
+            if (btn) {
+                if (pid === pageId) {
+                    btn.className = 'nav-btn active';
+                } else {
+                    btn.className = 'nav-btn';
+                }
+            }
+        });
+        var titleEl = document.getElementById('page-title');
+        if (titleEl) titleEl.textContent = titleMap[pageId] || pageId;
+        var storeEl = document.getElementById('current-page');
+        if (storeEl) {
+            var ev = new CustomEvent('_dashclient_store_updated', {bubbles: true});
+            storeEl.setAttribute('data-dash-is-loading', '');
+        }
+        history.pushState(null, '', '/' + pageId);
     }
 
-    @app.callback(
-        [Output("page-content", "children"),
-         Output("page-title", "children"),
-         Output("current-page", "data")] +
-        [Output(nav_id, "style") for nav_id in nav_ids],
-        [Input(nav_id, "n_clicks") for nav_id in nav_ids],
-        prevent_initial_call=False,
-    )
-    def navigate(*_):
-        ctx = callback_context
-        current = "overview"
-        if ctx.triggered:
-            trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-            current = page_map.get(trigger_id, "overview")
-        page_fn = page_funcs.get(current, _page_overview)
-        title = title_map.get(current, "总览")
-
-        # 根据当前页面设置导航激活样式
-        base_style = {
-            "padding": "12px 20px", "cursor": "pointer",
-            "borderRadius": "8px", "margin": "2px 10px",
-            "fontSize": "14px", "display": "flex",
-            "alignItems": "center", "gap": "8px",
-            "transition": "all 0.2s",
+    function handleClick(e) {
+        var btn = e.target.closest('[id^="nav-"]');
+        if (!btn) return;
+        var pageId = pageMap[btn.id];
+        if (pageId) {
+            e.preventDefault();
+            e.stopPropagation();
+            switchPage(pageId);
         }
-        nav_styles = []
-        for item in NAV_ITEMS:
-            style = {**base_style}
-            if item["id"] == current:
-                style["background"] = COLORS["accent"]
-                style["color"] = "#ffffff"
-                style["boxShadow"] = "0 2px 8px rgba(59,130,246,0.3)"
-            else:
-                style["background"] = "transparent"
-                style["color"] = COLORS["text_secondary"]
-            nav_styles.append(style)
+    }
 
-        return [page_fn(), title, current] + nav_styles
+    document.addEventListener('click', handleClick, true);
 
-    # ── 时钟 ───────────────────────────────────────────
+    window.addEventListener('popstate', function(e) {
+        var path = window.location.pathname.replace(/^\\//, '') || 'overview';
+        if (allPages.indexOf(path) !== -1) {
+            switchPage(path);
+        }
+    });
+});
+</script>
+</head>
+<body>
+{%app_entry%}
+<footer>
+{%config%}
+{%scripts%}
+{%renderer%}
+</footer>
+</body>
+</html>"""
+
+    app.layout = html.Div([
+        dcc.Location(id="url", refresh=False),
+        _sidebar(),
+
+        html.Div([
+            _header(),
+
+            html.Div([
+                html.Div(_page_overview(), id="page-overview", style={"display": "block"}),
+                html.Div(_page_backtest(), id="page-backtest", style={"display": "none"}),
+                html.Div(_page_strategies(), id="page-strategies", style={"display": "none"}),
+                html.Div(_page_trading(), id="page-trading", style={"display": "none"}),
+                html.Div(_page_ai(), id="page-ai", style={"display": "none"}),
+                html.Div(_page_data(), id="page-data", style={"display": "none"}),
+                html.Div(_page_logs(), id="page-logs", style={"display": "none"}),
+                html.Div(_page_settings(), id="page-settings", style={"display": "none"}),
+            ], style={
+                "padding": "24px 32px",
+                "overflowY": "auto",
+                "height": "calc(100vh - 120px)",
+            }),
+        ], style={
+            "marginLeft": f"{SIDEBAR_WIDTH}px",
+            "display": "flex", "flexDirection": "column",
+            "height": "100vh",
+        }),
+
+        dcc.Interval(id="global-timer", interval=5000),
+        dcc.Store(id="current-page", data="overview"),
+        dcc.Store(id="backtest-result-store"),
+        dcc.Store(id="api-keys-store", data={
+            "deepseek_key": "",
+            "openai_key": "",
+            "anthropic_key": "",
+        }),
+        dcc.Store(id="market-data-store", data={
+            "prices": {},
+            "timestamp": None,
+            "source": "pending",
+        }),
+        dcc.Interval(id="market-refresh", interval=5000),
+        html.Div(id="toast-container"),
+    ], style={
+        "backgroundColor": COLORS["bg_base"],
+        "minHeight": "100vh",
+        "fontFamily": FONT_UI,
+        "color": COLORS["text_primary"],
+    })
+
+    _register_callbacks(app)
+
+    return app
+
+
+def _register_callbacks(app: dash.Dash):
+
+    page_ids = [item['id'] for item in NAV_ITEMS]
+    nav_ids = [f"nav-{item['id']}" for item in NAV_ITEMS]
+    title_map = {item['id']: item['label'] for item in NAV_ITEMS}
+    nav_id_to_page = {f"nav-{item['id']}": item['id'] for item in NAV_ITEMS}
+
     @app.callback(
         Output("live-clock", "children"),
         Input("global-timer", "n_intervals"),
@@ -1168,7 +1494,6 @@ def _register_callbacks(app: dash.Dash):
     def update_clock(_):
         return datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
 
-    # ── 回测运行 ───────────────────────────────────────
     @app.callback(
         [Output("bt-results", "children"),
          Output("bt-results", "style"),
@@ -1242,7 +1567,6 @@ def _register_callbacks(app: dash.Dash):
                 "正在生成模拟数据...",
             ], style={"display": "flex", "alignItems": "center", "gap": "8px"})
 
-            # 生成数据
             import numpy as np
             np.random.seed(42)
             n = 500
@@ -1256,13 +1580,11 @@ def _register_callbacks(app: dash.Dash):
                 "volume": np.random.randint(100, 10000, n),
             })
 
-            # 运行回测
             engine = BacktestEngine(initial_capital=float(capital), market=market)
             cls, params = STRATEGY_CLASSES[strategy]
             engine.add_strategy(cls(params), symbols=[symbol], weight=1.0, timeframe=timeframe)
             report = engine.run({symbol: df})
 
-            # 补充 equity_curve 到 report 中
             eq = engine.equity_curve
             report["equity_curve"] = list(zip(
                 eq["timestamp"].astype(str).tolist(),
@@ -1303,7 +1625,6 @@ def _register_callbacks(app: dash.Dash):
                 None,
             )
 
-    # ── 数据下载 ───────────────────────────────────────
     @app.callback(
         Output("dl-status", "children"),
         Input("dl-run-btn", "n_clicks"),
@@ -1367,14 +1688,12 @@ def _register_callbacks(app: dash.Dash):
                 html.Div(str(e), style={"color": COLORS["text_muted"], "fontSize": "12px", "marginTop": "4px"}),
             ])
 
-    # ── 实时行情刷新（A股 + 美股 + 加密货币） ─────────
     @app.callback(
         Output("market-data-store", "data"),
         Input("market-refresh", "n_intervals"),
         prevent_initial_call=False,
     )
     def refresh_market_data(n_intervals):
-        """每 5 秒刷新 A股 + 美股 + 加密货币 实时行情（全部免费公开 API）。"""
         import concurrent.futures
         import random
 
@@ -1384,7 +1703,6 @@ def _register_callbacks(app: dash.Dash):
         now = datetime.now().isoformat()
 
         def _fetch_crypto():
-            """加密货币：CCXT Binance 公开 API"""
             try:
                 import asyncio
                 from quantengine.data.ccxt_fetcher import CCXTQuoteFetcher
@@ -1402,19 +1720,16 @@ def _register_callbacks(app: dash.Dash):
                 return None, None
 
         def _fetch_ashare():
-            """A股：akshare 东方财富免费接口"""
             try:
                 import akshare as ak
                 df = ak.stock_zh_a_spot_em()
                 if df is None or df.empty:
                     return None, None
 
-                # 关键指数代码
                 index_codes = {
                     "000001": "上证指数", "399001": "深证成指",
                     "000300": "沪深300", "000688": "科创50",
                 }
-                # 热门个股
                 hot_stocks = {"600519": "贵州茅台", "300750": "宁德时代",
                               "000858": "五粮液", "601318": "中国平安"}
                 result = {}
@@ -1430,7 +1745,6 @@ def _register_callbacks(app: dash.Dash):
                 return None, None
 
         def _fetch_us():
-            """美股：akshare 东方财富免费接口"""
             try:
                 import akshare as ak
                 df = ak.stock_us_famous_spot_em()
@@ -1451,7 +1765,6 @@ def _register_callbacks(app: dash.Dash):
                             "price": float(r.get("最新价", r.get("实时价格", 0)) or 0),
                             "change_pct": float(r.get("涨跌幅", r.get("涨幅", 0)) or 0),
                         }
-                # 如果上面没取到，尝试用 index_global_spot_em 获取指数
                 if not result.get("标普500") or not result.get("纳斯达克"):
                     try:
                         gdf = ak.index_global_spot_em()
@@ -1470,7 +1783,6 @@ def _register_callbacks(app: dash.Dash):
             except Exception:
                 return None, None
 
-        # 并行获取三个市场数据
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futs = {
                 "crypto": executor.submit(_fetch_crypto),
@@ -1481,12 +1793,10 @@ def _register_callbacks(app: dash.Dash):
             ashare_result, ashare_src = futs["a_share"].result() or (None, None)
             us_result, us_src = futs["us_stock"].result() or (None, None)
 
-        # 组装结果
         if crypto_result:
             prices["crypto"] = crypto_result
             source_parts.append(crypto_src or "币安")
         else:
-            # 加密货币兜底
             base_btc = 67500
             prices["crypto"] = {
                 "BTC/USDT": {"price": round(base_btc + random.uniform(-200, 200), 2),
@@ -1530,7 +1840,30 @@ def _register_callbacks(app: dash.Dash):
             "source": "+".join(set(source_parts)),
         }
 
-    # ── 保存 DeepSeek Key ──────────────────────────────
+    def _save_key_to_env(key_name: str, key_value: str) -> None:
+        """将 API Key 安全写入 .env 文件。"""
+        env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+        # 确保 .env 在 .gitignore 中
+        gitignore = env_path.parent / ".gitignore"
+        if gitignore.exists():
+            content = gitignore.read_text(encoding="utf-8")
+            if ".env" not in content:
+                gitignore.write_text(content + "\n.env\n", encoding="utf-8")
+        # 写入 .env
+        content = ""
+        if env_path.exists():
+            content = env_path.read_text(encoding="utf-8")
+            lines = [l for l in content.split("\n") if not l.startswith(f"{key_name}=")]
+            content = "\n".join(lines)
+        content += f"\n{key_name}={key_value}\n"
+        env_path.write_text(content.strip() + "\n", encoding="utf-8")
+        # Unix: 设置文件权限为 600
+        try:
+            import os
+            os.chmod(env_path, 0o600)
+        except Exception:
+            pass
+
     @app.callback(
         Output("deepseek-key-status", "children"),
         Input("save-deepseek-key", "n_clicks"),
@@ -1543,24 +1876,17 @@ def _register_callbacks(app: dash.Dash):
             return html.Span("⚠️ 请输入有效的 API Key（以 sk- 开头）",
                             style={"color": COLORS["warning"]})
         store["deepseek_key"] = key
-        # 尝试写入 .env
         try:
-            env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-            if env_path.exists():
-                content = env_path.read_text(encoding="utf-8")
-                if "DEEPSEEK_API_KEY" in content:
-                    lines_p = content.split("\n")
-                    content = "\n".join(
-                        l for l in lines_p if "DEEPSEEK_API_KEY" not in l
-                    )
-                content += f"\nDEEPSEEK_API_KEY={key}\n"
-                env_path.write_text(content, encoding="utf-8")
-            return html.Span("✅ 已保存", style={"color": COLORS["success"]})
+            _save_key_to_env("DEEPSEEK_API_KEY", key)
+            return html.Span([
+                html.Span("✅ 已保存（内存 + .env）", style={"color": COLORS["success"]}),
+                html.Span(" 密钥仅本地存储，建议设置文件权限",
+                         style={"color": COLORS["text_muted"], "fontSize": "11px", "marginLeft": "8px"}),
+            ])
         except Exception as e:
             return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
                             style={"color": COLORS["info"]})
 
-    # ── 保存 OpenAI Key ────────────────────────────────
     @app.callback(
         Output("openai-key-status", "children"),
         Input("save-openai-key", "n_clicks"),
@@ -1574,22 +1900,14 @@ def _register_callbacks(app: dash.Dash):
                             style={"color": COLORS["warning"]})
         store["openai_key"] = key
         try:
-            env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-            if env_path.exists():
-                content = env_path.read_text(encoding="utf-8")
-                if "OPENAI_API_KEY" in content:
-                    lines_p = content.split("\n")
-                    content = "\n".join(
-                        l for l in lines_p if "OPENAI_API_KEY" not in l
-                    )
-                content += f"\nOPENAI_API_KEY={key}\n"
-                env_path.write_text(content, encoding="utf-8")
-            return html.Span("✅ 已保存", style={"color": COLORS["success"]})
+            _save_key_to_env("OPENAI_API_KEY", key)
+            return html.Span([
+                html.Span("✅ 已保存（内存 + .env）", style={"color": COLORS["success"]}),
+            ])
         except Exception as e:
             return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
                             style={"color": COLORS["info"]})
 
-    # ── 保存 Anthropic Key ────────────────────────────
     @app.callback(
         Output("anthropic-key-status", "children"),
         Input("save-anthropic-key", "n_clicks"),
@@ -1603,33 +1921,25 @@ def _register_callbacks(app: dash.Dash):
                             style={"color": COLORS["warning"]})
         store["anthropic_key"] = key
         try:
-            env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-            if env_path.exists():
-                content = env_path.read_text(encoding="utf-8")
-                if "ANTHROPIC_API_KEY" in content:
-                    lines_p = content.split("\n")
-                    content = "\n".join(l for l in lines_p if "ANTHROPIC_API_KEY" not in l)
-                content += f"\nANTHROPIC_API_KEY={key}\n"
-                env_path.write_text(content, encoding="utf-8")
-            return html.Span("✅ 已保存", style={"color": COLORS["success"]})
+            _save_key_to_env("ANTHROPIC_API_KEY", key)
+            return html.Span([
+                html.Span("✅ 已保存（内存 + .env）", style={"color": COLORS["success"]}),
+            ])
         except Exception as e:
             return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
                             style={"color": COLORS["info"]})
 
-    # ── 多市场行情 → ticker-bar（始终在顶栏，切换页面不丢失） ─
     @app.callback(
         Output("ticker-bar", "children"),
         Input("market-data-store", "data"),
     )
     def update_ticker_bar(data):
-        """每次 market-data-store 更新时刷新顶栏行情条。"""
         if not data or not data.get("prices"):
             return "等待行情数据..."
 
         prices = data["prices"]
 
         def _tile(market_key, label, items):
-            """生成一个市场区块。"""
             parts = []
             for sym in items:
                 item = prices.get(market_key, {}).get(sym)
@@ -1642,7 +1952,7 @@ def _register_callbacks(app: dash.Dash):
                 parts.append(html.Span([
                     html.Span(f"{sym} ", style={"color": COLORS["text_secondary"], "fontSize": "12px"}),
                     html.Span(f"{p:,.2f}" if p < 100 else f"${p:,.0f}" if market_key == "crypto" else f"{p:,.2f}",
-                             style={"fontWeight": "700", "fontSize": "14px", "color": COLORS["text_primary"]}),
+                             style={"fontWeight": "700", "fontSize": "14px", "color": COLORS["text_primary"], "fontFamily": FONT_MONO}),
                     html.Span(f"  {chg:+.2f}%", style={"fontSize": "12px", "fontWeight": "500", "color": color}),
                 ], style={"display": "inline-flex", "alignItems": "center", "gap": "3px", "marginRight": "14px"}))
             return html.Div([
@@ -1659,7 +1969,6 @@ def _register_callbacks(app: dash.Dash):
             _tile("us_stock", "🇺🇸", ["标普500", "纳斯达克", "苹果"]),
         ], style={"display": "flex", "alignItems": "center", "width": "100%", "gap": "8px"})
 
-    # ── AI 新闻分析 ────────────────────────────────────
     @app.callback(
         [Output("ai-status", "children"),
          Output("ai-sentiment-chart", "figure"),
@@ -1681,7 +1990,6 @@ def _register_callbacks(app: dash.Dash):
                 _empty_chart("请配置 API Key"), html.Div(), html.Div(), html.Div(),
             )
         try:
-            # 1. 获取免费新闻
             try:
                 from quantengine.data.news_fetcher import CailianNewsFetcher
                 fetcher = CailianNewsFetcher({})
@@ -1695,7 +2003,6 @@ def _register_callbacks(app: dash.Dash):
                 news_items = []
 
             if not news_items:
-                # 兜底模拟新闻
                 class MockNews:
                     def __init__(self, t, c): self.title = t; self.content = c; self.source = "模拟"
                 news_items = [
@@ -1704,7 +2011,6 @@ def _register_callbacks(app: dash.Dash):
                     MockNews("监管政策预期明朗", "多家机构提交 ETF 申请，市场信心增强"),
                 ]
 
-            # 2. LLM 分析
             from openai import OpenAI
             client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
             analyzed = []
@@ -1723,19 +2029,20 @@ def _register_callbacks(app: dash.Dash):
                     result = {"sentiment": "neutral", "score": 0.5, "summary": item.title[:50]}
                 analyzed.append(result)
 
-            # 3. 情感图
             import plotly.graph_objects as go
             fig = go.Figure()
             fig.add_trace(go.Scatter(y=[a["score"] if a.get("sentiment")=="positive" else 0.5 for a in analyzed],
-                                     mode="markers+lines", name="正面", line=dict(color="#10b981")))
+                                     mode="markers+lines", name="正面", line=dict(color=COLORS["success"])))
             fig.add_trace(go.Scatter(y=[a["score"] if a.get("sentiment")=="negative" else 0.5 for a in analyzed],
-                                     mode="markers+lines", name="负面", line=dict(color="#ef4444")))
+                                     mode="markers+lines", name="负面", line=dict(color=COLORS["danger"])))
             fig.update_layout(title="新闻情感分析", template="plotly_dark",
                               paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                              font={"color": COLORS["text_secondary"], "size": 11},
                               height=300, margin=dict(l=40, r=20, t=40, b=40),
-                              yaxis=dict(range=[0, 1]), hovermode="x unified")
+                              xaxis={"gridcolor": "rgba(255,255,255,0.03)"},
+                              yaxis={"range": [0, 1], "gridcolor": "rgba(255,255,255,0.03)"},
+                              hovermode="x unified")
 
-            # 4. 新闻列表
             news_html = html.Div([
                 html.Div([
                     html.Span(f"{'🟢' if a.get('sentiment')=='positive' else '🔴' if a.get('sentiment')=='negative' else '⚪'} "),
@@ -1764,3 +2071,49 @@ def _register_callbacks(app: dash.Dash):
                 html.Span(f"❌ 失败: {e}", style={"color": COLORS["danger"]}),
                 _empty_chart("分析失败"), html.Div(), html.Div(), html.Div(),
             )
+
+    @app.callback(
+        Output("exec-status-text", "children"),
+        [Input("exec-start-btn", "n_clicks"), Input("exec-stop-btn", "n_clicks")],
+        prevent_initial_call=True,
+    )
+    def toggle_executor(start_clicks, stop_clicks):
+        ctx = callback_context
+        if not ctx.triggered:
+            return "执行器未运行"
+        trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+        if trigger == "exec-start-btn":
+            if _live_executor_ref:
+                try:
+                    _live_executor_ref.start()
+                    return "✅ 执行器已启动"
+                except Exception as e:
+                    return f"❌ 启动失败: {e}"
+            return "⚠️ 执行器未配置，请先在设置页面配置券商连接"
+        elif trigger == "exec-stop-btn":
+            if _live_executor_ref:
+                try:
+                    _live_executor_ref.stop()
+                    return "⏹ 执行器已停止"
+                except Exception as e:
+                    return f"❌ 停止失败: {e}"
+            return "执行器未运行"
+        return "执行器未运行"
+
+    @app.callback(
+        Output("toast-container", "children"),
+        Input("backtest-result-store", "data"),
+        prevent_initial_call=True,
+    )
+    def show_toast(data):
+        if data:
+            return html.Div("✅ 回测完成", style={
+                "position": "fixed", "bottom": "24px", "right": "24px",
+                "background": f"linear-gradient(135deg, {COLORS['gradient_start']}, {COLORS['gradient_end']})",
+                "color": "white",
+                "padding": "12px 24px", "borderRadius": "10px",
+                "fontSize": "14px", "fontWeight": "500", "zIndex": "1000",
+                "boxShadow": f"0 4px 16px {COLORS['accent_glow']}",
+                "fontFamily": FONT_UI,
+            })
+        return ""
