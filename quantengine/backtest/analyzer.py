@@ -174,18 +174,19 @@ class PerformanceAnalyzer:
 
     def _calc_sharpe(self, returns: pd.Series) -> float:
         """Calculate Sharpe ratio (annualized)."""
-        if len(returns) < 2:
+        if len(returns) < 2 or returns.nunique() < 2:
             return 0.0
 
         excess = returns - self.risk_free_rate / 252
-        if excess.std() == 0:
+        std = excess.std()
+        if std < 1e-10:
             return 0.0
 
-        return (excess.mean() / excess.std()) * math.sqrt(252)
+        return (excess.mean() / std) * math.sqrt(252)
 
     def _calc_sortino(self, returns: pd.Series) -> float:
         """Calculate Sortino ratio (uses downside deviation only)."""
-        if len(returns) < 2:
+        if len(returns) < 2 or returns.nunique() < 2:
             return 0.0
 
         downside = returns[returns < 0]

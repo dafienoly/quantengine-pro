@@ -49,11 +49,11 @@ class DualThrustStrategy(BaseStrategy):
         high = history["high"].values
         low = history["low"].values
 
-        # Calculate range
-        hh = np.max(close[-self.period:])  # N-day highest close
-        lc = np.min(close[-self.period:])  # N-day lowest close
-        hc = np.max(close[-self.period:])  # Same as hh for close
-        ll = np.min(close[-self.period:])  # Same as lc for close
+        # Calculate range (标准 Dual Thrust 公式)
+        hh = np.max(high[-self.period:])  # N-day highest high
+        lc = np.min(low[-self.period:])   # N-day lowest low
+        hc = np.max(high[-self.period:])  # N-day highest high
+        ll = np.min(low[-self.period:])   # N-day lowest low
 
         # Range = Max(HH - LC, HC - LL)
         rng = max(hh - lc, hc - ll)

@@ -956,7 +956,7 @@ def _page_data() -> html.Div:
 
 
 # ════════════════════════════════════════════════════════════
-#  页面：日志
+#  页面：设置
 # ════════════════════════════════════════════════════════════
 
 def _page_settings() -> html.Div:
@@ -1124,20 +1124,41 @@ def _register_callbacks(app: dash.Dash):
     @app.callback(
         [Output("page-content", "children"),
          Output("page-title", "children"),
-         Output("current-page", "data")],
+         Output("current-page", "data")] +
+        [Output(nav_id, "style") for nav_id in nav_ids],
         [Input(nav_id, "n_clicks") for nav_id in nav_ids],
         prevent_initial_call=False,
     )
     def navigate(*_):
         ctx = callback_context
-        if not ctx.triggered:
-            return _page_overview(), "总览", "overview"
+        current = "overview"
+        if ctx.triggered:
+            trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+            current = page_map.get(trigger_id, "overview")
+        page_fn = page_funcs.get(current, _page_overview)
+        title = title_map.get(current, "总览")
 
-        trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        page_id = page_map.get(trigger_id, "overview")
-        page_fn = page_funcs.get(page_id, _page_overview)
-        title = title_map.get(page_id, "总览")
-        return page_fn(), title, page_id
+        # 根据当前页面设置导航激活样式
+        base_style = {
+            "padding": "12px 20px", "cursor": "pointer",
+            "borderRadius": "8px", "margin": "2px 10px",
+            "fontSize": "14px", "display": "flex",
+            "alignItems": "center", "gap": "8px",
+            "transition": "all 0.2s",
+        }
+        nav_styles = []
+        for item in NAV_ITEMS:
+            style = {**base_style}
+            if item["id"] == current:
+                style["background"] = COLORS["accent"]
+                style["color"] = "#ffffff"
+                style["boxShadow"] = "0 2px 8px rgba(59,130,246,0.3)"
+            else:
+                style["background"] = "transparent"
+                style["color"] = COLORS["text_secondary"]
+            nav_styles.append(style)
+
+        return [page_fn(), title, current] + nav_styles
 
     # ── 时钟 ───────────────────────────────────────────
     @app.callback(
@@ -1182,6 +1203,11 @@ def _register_callbacks(app: dash.Dash):
         from quantengine.strategy.builtin.low_vol_defense import LowVolDefenseStrategy
         from quantengine.strategy.builtin.aberration import AberrationStrategy
         from quantengine.strategy.builtin.rsi_reversal import RSIReversalStrategy
+        from quantengine.strategy.builtin.pivot_point import PivotPointStrategy
+        from quantengine.strategy.builtin.fei_ali import FeiAliStrategy
+        from quantengine.strategy.builtin.dynamic_breakout_ii import DynamicBreakoutIIStrategy
+        from quantengine.strategy.builtin.multi_factor import MultiFactorStrategy
+        from quantengine.strategy.builtin.sector_rotation import SectorRotationStrategy
 
         STRATEGY_CLASSES = {
             "dual_thrust": (DualThrustStrategy, {"k1": 0.7, "k2": 0.7}),
@@ -1195,6 +1221,11 @@ def _register_callbacks(app: dash.Dash):
             "low_vol_defense": (LowVolDefenseStrategy, {}),
             "aberration": (AberrationStrategy, {"period": 20, "num_std": 2.0}),
             "rsi_reversal": (RSIReversalStrategy, {"rsi_period": 14}),
+            "pivot_point": (PivotPointStrategy, {"sensitivity": "moderate"}),
+            "fei_ali": (FeiAliStrategy, {"atr_mult_sl": 1.5, "atr_mult_tp": 3.0}),
+            "dynamic_breakout_ii": (DynamicBreakoutIIStrategy, {"base_period": 20}),
+            "multi_factor": (MultiFactorStrategy, {"factors": ["momentum", "volatility", "rsi"]}),
+            "sector_rotation": (SectorRotationStrategy, {"rotation_period": 20}),
         }
 
         if strategy not in STRATEGY_CLASSES:
@@ -1286,15 +1317,55 @@ def _register_callbacks(app: dash.Dash):
         if not n_clicks:
             return ""
 
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        import asyncio
 
-        return html.Span(
-            "ℹ️ 数据下载需要联网。请使用命令行: "
-            f"python scripts/download_data.py --market {market} --freq {freq}",
-            style={"color": COLORS["info"]}
-        )
+        try:
+            sym_list = [s.strip() for s in (symbols or "BTC/USDT").split(",")]
+            result_parts = []
+
+            if market == "crypto":
+                from quantengine.data.ccxt_fetcher import CCXTQuoteFetcher
+                fetcher = CCXTQuoteFetcher({"exchange": "binance"})
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                for sym in sym_list:
+                    df = loop.run_until_complete(
+                        fetcher.fetch_kline(symbol=sym, freq=freq or "1h", limit=int(limit or 100))
+                    )
+                    if not df.empty:
+                        count = len(df)
+                        result_parts.append(f"{sym}: {count} bar")
+                    else:
+                        result_parts.append(f"{sym}: 无数据")
+                loop.close()
+            elif market == "a_share":
+                from quantengine.data.akshare_fetcher import AkshareQuoteFetcher
+                fetcher = AkshareQuoteFetcher({})
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                for sym in sym_list:
+                    df = loop.run_until_complete(
+                        fetcher.fetch_kline(symbol=sym, freq=freq or "1d", limit=int(limit or 100))
+                    )
+                    if not df.empty:
+                        result_parts.append(f"{sym}: {len(df)} bar")
+                    else:
+                        result_parts.append(f"{sym}: 无数据")
+                loop.close()
+            else:
+                return html.Span(f"未知市场: {market}", style={"color": COLORS["danger"]})
+
+            return html.Div([
+                html.Div("✅ 数据下载完成", style={"color": COLORS["success"], "fontWeight": "600"}),
+                html.Div(" | ".join(result_parts), style={
+                    "color": COLORS["text_secondary"], "fontSize": "13px", "marginTop": "4px"}),
+            ])
+
+        except Exception as e:
+            return html.Div([
+                html.Div("❌ 下载失败", style={"color": COLORS["danger"], "fontWeight": "600"}),
+                html.Div(str(e), style={"color": COLORS["text_muted"], "fontSize": "12px", "marginTop": "4px"}),
+            ])
 
     # ── 实时行情刷新（A股 + 美股 + 加密货币） ─────────
     @app.callback(
@@ -1512,6 +1583,33 @@ def _register_callbacks(app: dash.Dash):
                         l for l in lines_p if "OPENAI_API_KEY" not in l
                     )
                 content += f"\nOPENAI_API_KEY={key}\n"
+                env_path.write_text(content, encoding="utf-8")
+            return html.Span("✅ 已保存", style={"color": COLORS["success"]})
+        except Exception as e:
+            return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
+                            style={"color": COLORS["info"]})
+
+    # ── 保存 Anthropic Key ────────────────────────────
+    @app.callback(
+        Output("anthropic-key-status", "children"),
+        Input("save-anthropic-key", "n_clicks"),
+        State("cfg-anthropic-key", "value"),
+        State("api-keys-store", "data"),
+        prevent_initial_call=True,
+    )
+    def save_anthropic_key(n, key, store):
+        if not key or not key.startswith("sk-ant-"):
+            return html.Span("⚠️ 请输入有效的 API Key（以 sk-ant- 开头）",
+                            style={"color": COLORS["warning"]})
+        store["anthropic_key"] = key
+        try:
+            env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+            if env_path.exists():
+                content = env_path.read_text(encoding="utf-8")
+                if "ANTHROPIC_API_KEY" in content:
+                    lines_p = content.split("\n")
+                    content = "\n".join(l for l in lines_p if "ANTHROPIC_API_KEY" not in l)
+                content += f"\nANTHROPIC_API_KEY={key}\n"
                 env_path.write_text(content, encoding="utf-8")
             return html.Span("✅ 已保存", style={"color": COLORS["success"]})
         except Exception as e:
