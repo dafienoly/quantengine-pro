@@ -1173,7 +1173,7 @@ def _register_callbacks(app: dash.Dash):
          Output("page-title", "children"),
          Output("current-page", "data")],
         [Input(nav_id, "n_clicks") for nav_id in nav_ids],
-        prevent_initial_call=True,
+        prevent_initial_call=False,
     )
     def navigate(*_):
         ctx = callback_context
