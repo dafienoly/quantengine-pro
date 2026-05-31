@@ -664,6 +664,40 @@ class AkshareQuoteFetcher(BaseQuoteFetcher):
             logger.warning(f"Could not parse date {date_str!r}; using as-is")
             return date_str
 
+    async def fetch_tick(
+        self,
+        symbol: str,
+        date: Optional[str] = None,
+        limit: int = 1000,
+    ) -> pd.DataFrame:
+        """
+        Fetch tick-level trade data for A-share stocks.
+
+        Uses akshare ``stock_zh_a_tick_tx`` for intraday tick data.
+
+        Args:
+            symbol: A-share stock code (e.g., '000001')
+            date: Date string 'YYYYMMDD'
+            limit: Max ticks (unused, API returns all ticks for the day)
+
+        Returns:
+            DataFrame with columns: timestamp, price, volume, direction
+        """
+        logger.info(f"Fetching tick data for {symbol} on {date or 'today'}")
+        try:
+            date_str = date or datetime.now().strftime("%Y-%m-%d")
+            df = await self._run_akshare("stock_zh_a_tick_tx", symbol, date_str)
+            if df.empty:
+                return pd.DataFrame(columns=["timestamp", "price", "volume", "direction"])
+            df = df.rename(columns={
+                "成交时间": "timestamp", "成交价": "price",
+                "成交量": "volume", "买卖方向": "direction",
+            })
+            return df.head(limit)
+        except Exception as e:
+            logger.warning(f"fetch_tick failed for {symbol}: {e}")
+            return pd.DataFrame(columns=["timestamp", "price", "volume", "direction"])
+
     @staticmethod
     def _build_quote_dict(row: pd.Series) -> Dict[str, Any]:
         """

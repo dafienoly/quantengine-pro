@@ -226,9 +226,96 @@ class LiveExecutor:
                 except Exception as e:
                     logger.error(f"Error processing {symbol} [{name}]: {e}")
 
+    async def _monitor_order(self, order, signal: Signal, bar) -> Optional[object]:
+        """
+        Monitor an order for fill, cancellation, or timeout.
+
+        Args:
+            order: The placed broker order
+            signal: Original trading signal
+            bar: Current market data
+
+        Returns:
+            Filled order or None if timed out
+        """
+        import asyncio
+
+        deadline = asyncio.get_event_loop().time() + self.order_timeout
+
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(2.0)
+
+            try:
+                order_status = await self.broker.get_order(order.order_id)
+            except Exception:
+                break
+
+            # Fully filled
+            if getattr(order_status, "filled_quantity", 0) >= order_status.quantity:
+                logger.info(
+                    f"Order filled: {order.order_id} {signal.symbol} "
+                    f"{order_status.filled_quantity}"
+                )
+                return order_status
+
+            # Partially filled: retry the remainder
+            if getattr(order_status, "filled_quantity", 0) > 0:
+                remaining = order_status.quantity - order_status.filled_quantity
+                logger.info(
+                    f"Order partially filled ({order_status.filled_quantity}/{order_status.quantity}), "
+                    f"placing retry for {remaining}"
+                )
+                # Cancel old order and retry remainder
+                try:
+                    await self.broker.cancel_order(order.order_id)
+                except Exception:
+                    pass
+                return await self._place_order_retry(
+                    symbol=signal.symbol,
+                    side=order_status.side if hasattr(order_status, "side") else None,
+                    quantity=remaining,
+                    price=bar.get("close", 0) if isinstance(bar, dict) else bar.get("close", 0),
+                )
+
+            # Cancelled or expired
+            if getattr(order_status, "status", "").value in ("CANCELLED", "EXPIRED", "REJECTED"):
+                logger.warning(f"Order {order.order_id} {order_status.status.value}, retrying...")
+                return await self._place_order_retry(
+                    symbol=signal.symbol,
+                    side=order_status.side if hasattr(order_status, "side") else None,
+                    quantity=order_status.quantity,
+                    price=bar.get("close", 0) if isinstance(bar, dict) else bar.get("close", 0),
+                )
+
+        # Timeout
+        logger.warning(f"Order {order.order_id} timed out after {self.order_timeout}s, cancelling")
+        try:
+            await self.broker.cancel_order(order.order_id)
+        except Exception:
+            pass
+        return None
+
+    async def _place_order_retry(self, symbol: str, side, quantity: float, price: float) -> Optional[object]:
+        """Place an order with retry logic."""
+        for attempt in range(self.max_retries):
+            try:
+                order = await self.broker.place_order(
+                    symbol=symbol,
+                    side=side,
+                    order_type=OrderType.MARKET,
+                    quantity=quantity,
+                    price=price,
+                )
+                if order and getattr(order.status, "value", "") not in ("REJECTED", "EXPIRED"):
+                    return order
+            except Exception as e:
+                logger.warning(f"Retry {attempt+1}/{self.max_retries} failed for {symbol}: {e}")
+            await asyncio.sleep(1.0)
+        return None
+
     async def _place_order_from_signal(self, signal: Signal, bar) -> Optional[object]:
         """
-        Convert signal to broker order and place it.
+        Convert signal to broker order and monitor for fill/timeout.
 
         Args:
             signal: Trading signal
@@ -245,38 +332,26 @@ class LiveExecutor:
         else:
             return None
 
-        # Determine order type
+        # Determine order type and price
         order_type = OrderType.LIMIT if signal.price else OrderType.MARKET
         price = signal.price or bar["close"]
-        quantity = signal.quantity or (0.01 * self._strategies.get(
-            signal.metadata.get("strategy_name", ""), type("", (), {"params": {}})().params.get("order_size", 0.01)
-        ))
+        quantity = signal.quantity or 0.01
 
-        # Place with retry
-        for attempt in range(self.max_retries):
-            order = await self.broker.place_order(
-                symbol=signal.symbol,
-                side=side,
-                order_type=order_type,
-                quantity=quantity,
-                price=price,
-                stop_price=signal.stop_loss,
-            )
+        # Place initial order
+        order = await self.broker.place_order(
+            symbol=signal.symbol,
+            side=side,
+            order_type=order_type,
+            quantity=quantity,
+            price=price,
+            stop_price=signal.stop_loss,
+        )
 
-            if order.status.value not in ("REJECTED", "EXPIRED"):
-                logger.info(
-                    f"Order placed: {order.order_id} {side.value} "
-                    f"{quantity} {signal.symbol} @ {price}"
-                )
-                return order
+        if not order:
+            return None
 
-            logger.warning(
-                f"Order rejected (attempt {attempt+1}/{self.max_retries}): "
-                f"{signal.symbol}"
-            )
-            await asyncio.sleep(1.0)
-
-        return None
+        # Monitor for fill, partial fill, or timeout
+        return await self._monitor_order(order, signal, bar)
 
     @property
     def stats(self) -> Dict:

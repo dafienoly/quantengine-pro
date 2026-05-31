@@ -19,7 +19,7 @@ data:
   market_flow:
     provider: eastmoney          # Free EastMoney web API
     cache_enabled: true
-    cache_ttl_seconds: 60       # 60 seconds for market data
+    cache_ttl_seconds: 30       # 30 seconds for market data (设计文档要求)
 
   # ---- News / Sentiment ----
   news:
@@ -37,6 +37,11 @@ data:
     redis_port: 6379
     redis_db: 0
     memory_cache_size: 1000             # LRU cache entries
+
+  # ---- K-line 缓存策略 ----
+  kline_cache:
+    persist: true                  # K线数据永久存储（从不自动过期）
+    parquet_compress: "snappy"    # Parquet 压缩格式
 
   # ---- Data Download Defaults ----
   download:

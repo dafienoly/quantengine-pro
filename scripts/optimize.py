@@ -33,6 +33,11 @@ from quantengine.strategy.builtin.r_breaker import RBreakerStrategy
 from quantengine.strategy.builtin.grid_ma import GridMAStrategy
 from quantengine.strategy.builtin.panic_reversal import PanicReversalStrategy
 from quantengine.strategy.builtin.low_vol_defense import LowVolDefenseStrategy
+from quantengine.strategy.builtin.aberration import AberrationStrategy
+from quantengine.strategy.builtin.pivot_point import PivotPointStrategy
+from quantengine.strategy.builtin.fei_ali import FeiAliStrategy
+from quantengine.strategy.builtin.dynamic_breakout_ii import DynamicBreakoutIIStrategy
+from quantengine.strategy.builtin.rsi_reversal import RSIReversalStrategy
 from quantengine.backtest.engine import BacktestEngine
 
 # Strategy map with their parameter search spaces
@@ -88,6 +93,42 @@ STRATEGY_CONFIG = {
             "grid_levels": ("int", 5, 20),
             "grid_spacing": ("float", 0.005, 0.05),
             "base_position_pct": ("float", 0.2, 0.8),
+        },
+    },
+    "aberration": {
+        "class": AberrationStrategy,
+        "params": {
+            "period": ("int", 10, 50),
+            "num_std": ("float", 1.0, 3.5),
+        },
+    },
+    "pivot_point": {
+        "class": PivotPointStrategy,
+        "params": {
+            "sensitivity": ("categorical", ["conservative", "moderate", "aggressive"]),
+        },
+    },
+    "fei_ali": {
+        "class": FeiAliStrategy,
+        "params": {
+            "atr_mult_sl": ("float", 1.0, 3.0),
+            "atr_mult_tp": ("float", 2.0, 5.0),
+        },
+    },
+    "dynamic_breakout_ii": {
+        "class": DynamicBreakoutIIStrategy,
+        "params": {
+            "base_period": ("int", 10, 40),
+            "k1": ("float", 0.3, 1.0),
+            "k2": ("float", 0.3, 1.0),
+        },
+    },
+    "rsi_reversal": {
+        "class": RSIReversalStrategy,
+        "params": {
+            "rsi_period": ("int", 7, 28),
+            "oversold": ("int", 20, 40),
+            "overbought": ("int", 60, 80),
         },
     },
     "panic_reversal": {

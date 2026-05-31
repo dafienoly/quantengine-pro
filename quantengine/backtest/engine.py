@@ -132,6 +132,23 @@ class BacktestEngine:
         self.event_bus.subscribe(EventType.RISK_VIOLATION, on_risk_violation)
         self.event_bus.subscribe(EventType.MARGIN_CALL, on_margin_call)
 
+        # Daily NAV settlement
+        def on_bar_close(event: Event) -> None:
+            equity = event.data.get("equity", 0) if event.data else 0
+            timestamp = event.timestamp
+            self._daily_returns.append((timestamp, equity))
+
+            # Record daily NAV
+            if len(self._daily_returns) >= 2:
+                prev_equity = self._daily_returns[-2][1]
+                daily_return = (equity - prev_equity) / prev_equity if prev_equity > 0 else 0
+                logger.debug(
+                    f"NAV settlement @ {timestamp}: equity={equity:,.2f}, "
+                    f"daily_return={daily_return:.4%}"
+                )
+
+        self.event_bus.subscribe(EventType.BAR_CLOSE, on_bar_close)
+
     # ---- Strategy Management ----
 
     def add_strategy(

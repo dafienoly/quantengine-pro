@@ -134,6 +134,26 @@ class BaseQuoteFetcher(ABC):
         """
         ...
 
+    @abstractmethod
+    async def fetch_tick(
+        self,
+        symbol: str,
+        date: Optional[str] = None,
+        limit: int = 1000,
+    ) -> pd.DataFrame:
+        """
+        Fetch tick-level trade data.
+
+        Args:
+            symbol: Trading symbol
+            date: Date string 'YYYYMMDD', defaults to today
+            limit: Maximum number of ticks
+
+        Returns:
+            DataFrame with columns: timestamp, price, volume, direction
+        """
+        ...
+
     async def fetch_batch_kline(
         self,
         symbols: List[str],

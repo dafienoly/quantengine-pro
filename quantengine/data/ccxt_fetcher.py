@@ -250,3 +250,41 @@ class CCXTQuoteFetcher(BaseQuoteFetcher):
         except Exception as e:
             logger.error(f"Failed to fetch order book for {symbol}: {e}")
             return {"symbol": symbol, "bids": [], "asks": [], "error": str(e)}
+
+    async def fetch_tick(
+        self,
+        symbol: str,
+        date: Optional[str] = None,
+        limit: int = 1000,
+    ) -> pd.DataFrame:
+        """
+        Fetch tick-level trade data for crypto pairs.
+
+        Uses CCXT ``fetch_trades()`` to get recent trades.
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USDT')
+            date: Date string (ignored for crypto, API returns recent trades)
+            limit: Max trades to fetch
+
+        Returns:
+            DataFrame with columns: timestamp, price, volume, direction
+        """
+        exchange = self._get_exchange()
+        try:
+            loop = asyncio.get_event_loop()
+            trades = await loop.run_in_executor(
+                None, lambda: exchange.fetch_trades(symbol, limit=limit)
+            )
+            records = []
+            for t in trades:
+                records.append({
+                    "timestamp": pd.Timestamp(t.get("datetime", t.get("timestamp"))),
+                    "price": t.get("price", 0.0),
+                    "volume": t.get("amount", 0.0),
+                    "direction": t.get("side", ""),
+                })
+            return pd.DataFrame(records)
+        except Exception as e:
+            logger.warning(f"fetch_tick failed for {symbol}: {e}")
+            return pd.DataFrame(columns=["timestamp", "price", "volume", "direction"])

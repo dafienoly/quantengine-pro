@@ -29,6 +29,11 @@ from quantengine.strategy.builtin.r_breaker import RBreakerStrategy
 from quantengine.strategy.builtin.grid_ma import GridMAStrategy
 from quantengine.strategy.builtin.panic_reversal import PanicReversalStrategy
 from quantengine.strategy.builtin.low_vol_defense import LowVolDefenseStrategy
+from quantengine.strategy.builtin.aberration import AberrationStrategy
+from quantengine.strategy.builtin.pivot_point import PivotPointStrategy
+from quantengine.strategy.builtin.fei_ali import FeiAliStrategy
+from quantengine.strategy.builtin.dynamic_breakout_ii import DynamicBreakoutIIStrategy
+from quantengine.strategy.builtin.rsi_reversal import RSIReversalStrategy
 from quantengine.backtest.engine import BacktestEngine
 
 STRATEGY_MAP = {
@@ -40,6 +45,11 @@ STRATEGY_MAP = {
     "grid_ma": GridMAStrategy,
     "panic_reversal": PanicReversalStrategy,
     "low_vol_defense": LowVolDefenseStrategy,
+    "aberration": AberrationStrategy,
+    "pivot_point": PivotPointStrategy,
+    "fei_ali": FeiAliStrategy,
+    "dynamic_breakout_ii": DynamicBreakoutIIStrategy,
+    "rsi_reversal": RSIReversalStrategy,
 }
 
 
