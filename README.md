@@ -1,453 +1,612 @@
-# QuantEngine Pro
+# QuantEngine Pro 量化引擎专业版
 
-> 全流程量化交易系统 — 数据获取 → 因子计算 → 策略研发 → 回测验证 → 实盘执行 → 监控分析
+> 全流程量化交易系统 — 数据获取 → 因子计算 → 策略研发 → 回测验证 → 实盘执行 → AI 监控分析
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.1.0-orange)]()
+[![Code style](https://img.shields.io/badge/code%20style-black-000000)]()
 
-## 核心特性
+**一键启动，开箱即用** — 无需任何 API Key 即可查看 A股 + 美股 + 加密货币实时行情。
 
-- **多市场支持**: A股（日线/分钟）+ 加密货币（现货）
-- **10个内置策略**: Dual Thrust, R Breaker, 海龟, 布林带, 双均线, 网格+MA, 做市商, 恐慌反转, 低波动防御, 多因子选股
-- **事件驱动回测**: 全成本模拟（佣金/印花税/滑点/融资利息）
-- **多因子系统**: 动量/波动率/成交量/RSI/MACD 等可扩展因子库
-- **LLM增强**: DeepSeek AI进行新闻情感分析、市场解读、买卖点推荐
-- **实盘执行**: 风控模块（仓位限制/日亏损熔断/强制平仓）
-- **Web看板**: Plotly Dash 可视化（权益曲线/持仓/信号/AI分析）
-- **免费起步**: akshare + CCXT + DeepSeek免费API，零成本验证策略
+---
 
-## 架构
+## 📋 目录
+
+- [核心特性](#-核心特性)
+- [系统架构](#-系统架构)
+- [功能全景图](#-功能全景图)
+- [三层数据流](#-三层数据流)
+- [16 个内置策略](#-16-个内置策略)
+- [快速开始](#-快速开始)
+- [配置指南](#-配置指南)
+- [Web 仪表盘](#-web-仪表盘)
+- [API 参考](#-api-参考)
+- [项目结构](#-项目结构)
+- [开发指南](#-开发指南)
+- [常见问题](#-常见问题)
+
+---
+
+## ✨ 核心特性
+
+### 多市场全覆盖
+| 市场 | 数据源 | 费用 | 数据粒度 |
+|------|--------|------|---------|
+| 🇨🇳 A股 | akshare（东方财富） | ✅ 免费 | Tick / 1m~日线 |
+| 🇺🇸 美股 | akshare（东方财富） | ✅ 免费 | 实时报价 |
+| 💎 加密货币 | CCXT（Binance） | ✅ 免费 | Tick / 1m~周线 |
+
+### 16 个内置策略
+突破、趋势、反转、复合、因子、做市六大类，覆盖主流量化策略。
+
+### 事件驱动回测引擎
+- 全成本模拟：佣金 / 印花税 / 滑点 / 融资利息
+- 多策略资金竞争：权重分配，资金上限
+- 强制平仓：杠杆维持保证金率 < 130% 触发
+- 绩效分析：夏普 / 索提诺 / 最大回撤 / Calmar / 月度热力图
+
+### AI 增强分析
+- 🔗 **LLM 新闻情感分析** — DeepSeek / OpenAI 分析新闻情感，输出买入/卖出信号
+- 📊 **AI 选股** — 多条件筛选 + 因子排名 + LLM 过滤
+- 💡 **买卖点推荐** — 策略信号 + 技术形态 + LLM 解释
+
+### Web 可视化仪表盘
+- 8 个功能页面，侧边栏导航
+- 实时 A股 + 美股 + 加密货币行情（每 5 秒刷新）
+- 在线回测：选择策略 → 一键运行 → 权益曲线 + 交易明细
+- AI 新闻分析：点击按钮抓取新闻 → LLM 分析 → 展示情感趋势
+- API Key 配置：DeepSeek / OpenAI / Anthropic 界面配置
+
+### 免费起步，平滑升级
+| 服务 | 免费方案 | 升级方案 |
+|------|---------|---------|
+| 行情数据 | akshare + CCXT | QMT / Tushare Pro |
+| 大盘数据 | 东方财富网页 API | Wind / iFinD |
+| 新闻 | 财联社 RSS / CryptoPanic | Bloomberg / Reuters |
+| LLM | DeepSeek API（免费额度） | GPT-4 / Claude |
+
+---
+
+## 🏗 系统架构
+
+采用**分层 + 事件驱动 + 插件化**架构，各层通过抽象接口交互。
 
 ```
-┌─────────────────────────────────────┐
-│    Presentation Layer (Web UI)       │  Plotly Dash + FastAPI
-├─────────────────────────────────────┤
-│    Analysis Service Layer            │  LLM分析/选股/信号推荐
-├─────────────────────────────────────┤
-│    Execution Layer                   │  实盘执行/风控/报告
-├─────────────────────────────────────┤
-│    Strategy Layer                    │  10策略/因子/注册机制
-├─────────────────────────────────────┤
-│    Backtest Layer                    │  事件驱动回测/绩效分析
-├─────────────────────────────────────┤
-│    Data Layer                        │  行情/大盘/新闻/缓存
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Presentation Layer                        │
+│          Web Dashboard · REST API · WebSocket               │
+│       Plotly Dash + FastAPI + Plotly Charting               │
+├─────────────────────────────────────────────────────────────┤
+│                    Analysis Service Layer                    │
+│   LLM News Analyzer · Stock Screener · Signal Advisor      │
+│   DeepSeek / OpenAI / Anthropic · Sentiment Pipeline        │
+├─────────────────────────────────────────────────────────────┤
+│                    Execution Layer                           │
+│   Live Executor · Risk Manager · Daily Reporter             │
+│   QMT Client (A股) · CCXT Broker (Crypto)                  │
+├─────────────────────────────────────────────────────────────┤
+│                    Strategy Layer                            │
+│   Strategy Engine · 16 Built-in Strategies · Registry       │
+│   Factor System · Custom Strategy Loader                    │
+├─────────────────────────────────────────────────────────────┤
+│                    Backtest Layer                            │
+│   Event-Driven Engine · Multi-Strategy Competition          │
+│   Cost Model · Position Manager · Performance Analyzer      │
+├─────────────────────────────────────────────────────────────┤
+│                    Data Layer                                │
+│   Quote Fetcher · Market Flow Fetcher · News Fetcher       │
+│   3-Tier Cache (Memory LRU + Redis + Parquet)              │
+│   Factor Library · Auto-calculation Pipeline                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 各层职责
+
+#### 数据层 (Data Layer)
+- **行情获取**: `BaseQuoteFetcher` 抽象 → `AkshareQuoteFetcher`（A 股）/ `CCXTQuoteFetcher`（加密货币）
+- **大盘资金流**: `BaseMarketFlowFetcher` → `EastMoneyFlowFetcher`
+- **新闻获取**: `BaseNewsFetcher` → `CailianNewsFetcher` / `SinaStockNewsFetcher` / `CryptoPanicNewsFetcher`
+- **三级缓存**: 内存 LRU（1000 项）→ Redis（7 天）→ Parquet（永久）
+- **因子计算**: 数据加载后自动触发，因子结果合并入标准 DataFrame
+
+#### 回测层 (Backtest Layer)
+- 事件驱动引擎：严格按 `市场数据 → 策略信号 → 订单 → 成交 → 持仓更新` 顺序处理
+- 全成本模拟：佣金（比例/固定）、印花税（卖出 0.1%）、滑点（固定/比例/成交量）、融资利息
+- 多策略资金竞争：权重分配，资金上限，订单按优先级和资金上限撮合
+- 强制平仓：维持保证金率 < 130% 触发强平
+
+#### 策略层 (Strategy Layer)
+- `BaseStrategy` 抽象：需实现 `on_bar()` / `on_tick()` 产生 `Signal`
+- `Signal` 含：timestamp, symbol, type, price, quantity, stop_loss, take_profit, confidence, metadata
+- 通过 YAML 注册策略，启动时动态加载，支持热更新
+- 16 个内置策略覆盖六大类交易逻辑
+
+#### 执行层 (Execution Layer)
+- `BaseBrokerClient` 统一接口：`place_order` / `cancel_order` / `get_positions` / `get_balance`
+- 主循环每隔 10 秒扫描策略标的 → 信号生成 → 风控检查 → 下单
+- 订单超时自动取消，部分成交自动追单
+- 风控模块：单标的 ≤ 20% / 总仓位 ≤ 95% / 日亏损 ≥ 5% 熔断 / 连续亏损 5 笔暂停
+
+#### 分析服务层 (Analysis Service Layer)
+- LLM 新闻分析：聚合新闻 → 去重 → LLM 情感分析 → 结构化结果
+- 自动选股：技术面 + 基本面 + 因子排名 + LLM 新闻过滤
+- 买卖点推荐：策略信号 + 技术形态 + LLM 解读
+
+#### 展示层 (Presentation Layer)
+- FastAPI 提供 REST + WebSocket 接口
+- Plotly Dash 构建 8 页面 Web 仪表盘
+- 实时行情每 5 秒自动刷新
+
+---
+
+## 🗺 功能全景图
+
+| 领域 | 模块 | 关键能力 | 免费数据源 | 升级路径 |
+|------|------|---------|-----------|---------|
+| **数据** | 行情获取 | A股/美股/加密货币 Tick/Min/日K | akshare + CCXT | QMT / Tushare Pro |
+| | 大盘资金流 | 市场宽度、板块资金、指数估值 | 东方财富免费 API | Wind / iFinD |
+| | 新闻舆情 | 财联社、新浪财经、币圈快讯 | 财联社 RSS、CryptoPanic | Bloomberg / Reuters |
+| | 数据缓存 | 三级缓存策略 | Parquet + Redis | Redis Cluster |
+| | 因子计算 | 技术/基本面/另类因子 | 基于缓存实时计算 | 自定义因子 SDK |
+| **回测** | 事件驱动引擎 | 全成本逐笔复利 | 自研 | 分布式回测 |
+| | 绩效分析 | 夏普/回撤/Calmar/月度热力图 | 自研 + Optuna | — |
+| **策略** | 经典策略库 | 16 个策略 | 内置 | 自定义策略 SDK |
+| | 因子策略 | 多因子选股、行业轮动 | 内置 | 自定义因子 |
+| **执行** | 实盘执行器 | QMT/CCXT 统一执行 | — | 多券商 |
+| | 风控 | 仓位限制/日亏损熔断 | 内置 | — |
+| | 报告 | 每日自动报告 | 邮件适配器 | 钉钉/微信 |
+| **分析** | LLM 新闻分析 | 新闻→情感→标的评分 | DeepSeek | GPT-4 / Claude |
+| | 自动选股 | 多条件 + 因子 + LLM | 内置 | — |
+| **展示** | Web 看板 | 8 页面仪表盘 | Plotly Dash | — |
+
+---
+
+## 📊 三层数据流
+
+### 第一层：实时行情（零配置，自动刷新）
+
+```
+┌──────────┐    ┌──────────────┐    ┌─────────────────┐
+│ Binance  │───▶│  CCXT 公开API │───▶│  market-data-   │
+│ 交易所   │    │  (免费, 无需  │    │  store (每5秒)  │
+│          │    │   API Key)    │    │                  │
+├──────────┤    ├──────────────┤    ├─────────────────┤
+│ 东方财富 │───▶│  akshare     │───▶│  顶栏行情条     │
+│ (A股+美股)│   │  (免费)       │    │  ticker-bar     │
+└──────────┘    └──────────────┘    └─────────────────┘
+```
+
+首次启动立即展示 BTC/USDT、ETH/USDT、上证指数、沪深300、标普500 等实时价格。网络不可用时自动降级为模拟行情，UI 始终有数据。
+
+### 第二层：在线回测（界面配置，一键运行）
+
+```
+选择策略 → 配置参数 → 点击运行
+  │
+  ├─ 生成模拟行情数据
+  ├─ BacktestEngine.run()
+  ├─ 权益曲线 + 交易明细
+  └─ 绩效指标报表
+```
+
+所有 16 个策略均可从 Web 界面直接回测，无需编辑任何代码。
+
+### 第三层：AI 新闻分析（需配置 API Key）
+
+```
+点击「获取最新新闻并分析」
+  │
+  ├─ CailianNewsFetcher (免费)
+  ├─ → 8 条最新财经新闻
+  ├─ DeepSeek LLM 逐条分析
+  │    情感分类 + 评分 + 摘要
+  ├─ → 情感趋势图
+  ├─ → AI 推荐 + 交易信号
+  └─ → 分析结果列表
 ```
 
 ---
 
-## 🚀 部署与启动
+## 📈 16 个内置策略
 
-本系统支持两种运行模式：
+### 突破策略
 
-> **本地开发** — 直接使用 Python 虚拟环境，适合策略研发和回测
-> **Docker 生产** — 容器化部署，包含 Redis 缓存和定时数据下载，适合长期运行
+| 策略 | 核心逻辑 | 参数 |
+|------|---------|------|
+| **Dual Thrust** | N 日区间突破 | `k1`, `k2`, `period` |
+| **R Breaker** | 前日高低点计算关键价位 | `f1`, `f2`, `f3` |
+| **Aberration** | 波动率自适应布林带通道 | `period`, `num_std` |
+| **菲阿里四价** | 昨高/昨低/开盘/收盘四价突破 | `atr_mult_sl`, `atr_mult_tp` |
+| **动态突破 II** | ATR 动态调整回溯周期 | `base_period`, `k1`, `k2` |
+
+### 趋势策略
+
+| 策略 | 核心逻辑 | 参数 |
+|------|---------|------|
+| **海龟交易** | 唐奇安通道突破 + ATR 止损 | `entry_period`, `exit_period`, `atr_period` |
+| **双均线 + 网格** | 金叉死叉 + 网格分层 | `fast_period`, `slow_period`, `grid_spacing` |
+| **Pivot Point** | 枢轴点支撑阻力系统 | `sensitivity` |
+
+### 反转策略
+
+| 策略 | 核心逻辑 | 参数 |
+|------|---------|------|
+| **布林带均值回归** | 触碰上下轨反向开仓 | `period`, `num_std`, `rsi_period` |
+| **RSI 反转** | 超买超卖阈值反转 | `rsi_period`, `oversold`, `overbought` |
+
+### 复合策略
+
+| 策略 | 核心逻辑 | 参数 |
+|------|---------|------|
+| **恐慌反转** | 大跌后情绪修复 | `drop_threshold`, `recovery_factor` |
+| **低波防御** | 低波动组合避险 | `volatility_window`, `volatility_threshold` |
+
+### 因子策略
+
+| 策略 | 核心逻辑 | 参数 |
+|------|---------|------|
+| **多因子选股** | 动量 + 波动率 + RSI 等权打分 | `factors` |
+| **行业轮动** | 动量最强的行业 ETF | `rotation_period`, `top_n` |
+
+### 做市策略
+
+| 策略 | 核心逻辑 | 参数 |
+|------|---------|------|
+| **简单做市商** | 中间价双侧挂限价单 | `spread`, `order_size`, `max_position` |
 
 ---
 
-### 🔧 前置要求
+## 🚀 快速开始
 
-| 组件 | 本地开发 | Docker 生产 |
-|------|----------|-------------|
-| Python | ≥ 3.10 | — (已内置在镜像中) |
-| Docker | — | Docker Engine 24+ |
-| 内存 | ≥ 2 GB | ≥ 4 GB |
-| API Key | DeepSeek (免费) | DeepSeek (免费) |
+### 前置要求
 
-> **获取 DeepSeek API Key**（免费）：https://platform.deepseek.com/api_keys
+| 组件 | 版本要求 |
+|------|---------|
+| Python | ≥ 3.10 |
+| pip | 最新版 |
+| Git | — |
 
----
-
-### ⚙️ 环境变量配置
+### 方式一：一键安装（推荐）
 
 ```bash
-# 1. 复制环境变量模板
-cp .env.example .env
+# 克隆仓库
+git clone https://github.com/dafienoly/quantengine-pro.git
+cd quantengine-pro
 
-# 2. 编辑 .env，填入你的 API Key
-#    至少需要 DEEPSEEK_API_KEY
-```
-
-`.env` 文件内容示例：
-
-```bash
-# 必填：DeepSeek API Key（免费）
-DEEPSEEK_API_KEY=sk-your-key-here
-
-# 可选：备用 LLM
-# OPENAI_API_KEY=sk-xxx
-```
-
-> **注意**：本地开发时如果仅使用回测和模拟交易，可以不配置 API Key（LLM 分析功能不可用，其余功能正常）。
-
----
-
-### 📦 方式一：本地开发环境
-
-适合策略研发、回测验证、快速调试。
-
-#### 一键安装（推荐）
-
-项目根目录下有一键安装脚本 `setup.py`，自动完成创建虚拟环境、安装依赖、运行测试：
-
-```bash
-# 完整安装（含 akshare、ccxt 等，预计 2-5 分钟）
-python setup.py
-
-# 最小安装（仅核心依赖，仅加密货币场景）
-python setup.py --minimal
-
-# 跳过测试（快速部署，后续再验证）
-python setup.py --skip-test
-```
-
-**Windows PowerShell** 中直接运行：
-
-```powershell
-python setup.py
-```
-
-**Linux / macOS** 同样：
-
-```bash
-python3 setup.py
-```
-
-#### 分步安装（可选）
-
-如需手动控制每一步：
-
-```bash
-# 1. 创建虚拟环境
+# 创建虚拟环境（Python 3.10+）
 python -m venv venv
 
-# 2. 激活
+# 激活环境
 # Windows:
 venv\Scripts\activate
-# Linux / macOS:
+# macOS/Linux:
 source venv/bin/activate
 
-# 3. 安装依赖
-pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov black ruff
+# 安装依赖
+python -m pip install -r requirements.txt
 
-# 4. 验证
-python -m pytest tests/ -v --tb=short
+# 一键安装 + 测试
+python setup.py
 ```
 
-#### 4. 下载数据
+### 方式二：Docker 生产部署
 
 ```bash
-# 加密货币（BTC/USDT, ETH/USDT 1小时线）
-python scripts/download_data.py --market crypto --freq 1h --symbols BTC/USDT,ETH/USDT
+# 1. 配置 API Key
+cp .env.example .env
+# 编辑 .env，填入 DEEPSEEK_API_KEY
 
-# A 股（前 200 只股票，日线，从 2020 年起）
-python scripts/download_data.py --market a_share --freq 1d --start 20200101 --max-symbols 200
-```
-
-#### 5. 运行回测
-
-```bash
-# 单策略回测
-python scripts/run_backtest.py --strategy dual_thrust --symbol ETH/USDT --timeframe 1h
-
-# 回测所有策略（生成对比报告）
-make backtest-all
-
-# 参数优化（使用 Optuna）
-python scripts/optimize.py --strategy dual_thrust --objective sharpe
-```
-
-#### 6. 启动 Web 看板
-
-```bash
-# 一键启动（Dash 仪表盘 + FastAPI 后端 + WebSocket）
-make dashboard
-
-# 或在激活 venv 后直接运行：
-python -m quantengine.web.app --port 8050
-```
-
-然后打开浏览器：
-
-| 地址 | 用途 |
-|------|------|
-| http://localhost:8050 | 📊 Dash 仪表盘（权益曲线/持仓/AI分析） |
-| http://localhost:8000/docs | 📑 FastAPI Swagger 文档 |
-
----
-
-### 🐳 方式二：Docker 生产部署
-
-适合服务器长期运行，包含 Redis 缓存、日志轮转、资源限制、健康检查。
-
-#### 1. 准备环境
-
-```bash
-# 确保 .env 文件已配置（至少包含 DEEPSEEK_API_KEY）
-# Docker Compose 会自动读取 .env 文件中的变量
-```
-
-#### 2. 构建与启动
-
-```bash
-# 构建镜像并启动所有服务
+# 2. 启动
 docker compose up -d
 
-# 查看启动日志
+# 3. 查看日志
 docker compose logs -f app
 ```
 
-#### 3. 服务架构
-
-启动后的容器：
-
-| 容器名 | 镜像 | 端口 | 用途 |
-|--------|------|------|------|
-| `quantengine-app` | `quantengine-pro:latest` | `8050` / `8000` | Web 仪表盘 + API |
-| `quantengine-redis` | `redis:7-alpine` | `6379` | 缓存加速 |
-
-#### 4. 可选：启用数据自动下载
+### 启动系统
 
 ```bash
-# 额外启动数据下载服务（每小时自动拉取）
-docker compose --profile full up -d
+# 启动 Web 仪表盘
+python -m quantengine.web.app
+
+# 打开浏览器访问
+# http://localhost:8050
 ```
 
-这会在上述基础上额外启动：
+启动后自动展示：
+- 💎 BTC/USDT + ETH/USDT 实时价格
+- 🇨🇳 上证指数 + 沪深300 + 贵州茅台
+- 🇺🇸 标普500 + 纳斯达克 + 苹果
 
-| 容器名 | 用途 |
-|--------|------|
-| `quantengine-downloader` | 每小时自动下载 BTC/USDT, ETH/USDT 1h 数据 |
-
-#### 5. 生产管理命令
-
-```bash
-# 查看服务状态
-docker compose ps
-
-# 查看日志（实时）
-docker compose logs -f app
-
-# 查看 Redis 日志
-docker compose logs -f redis
-
-# 停止所有服务
-docker compose down
-
-# 重新构建并启动（代码变更后）
-docker compose up -d --build
-```
-
-#### 6. 资源限制
-
-默认资源配置（在 `docker-compose.yml` 中可调整）：
-
-| 服务 | 内存限制 | 预留内存 |
-|------|----------|----------|
-| app | 2 GB | 512 MB |
-| data-downloader | 1 GB | 256 MB |
+全部零配置，无需任何 API Key。
 
 ---
 
-## 📋 Makefile 速查
+## ⚙️ 配置指南
+
+### 配置文件
+
+系统所有配置集中在 `config/` 目录，YAML 格式：
+
+```
+config/
+├── data_source.yaml    # 数据源配置（行情/大盘/新闻 Provider）
+├── llm.yaml            # LLM 服务配置（DeepSeek/OpenAI/Claude）
+├── strategies.yaml     # 策略注册与参数
+├── risk_config.yaml    # 风控阈值
+└── execution.yaml      # 执行配置（券商类型/间隔）
+```
+
+### API Key 配置
+
+**方式一：Web 界面（推荐）**
+
+1. 打开 http://localhost:8050
+2. 点击侧边栏 ⚙️ **设置**
+3. 填入 API Key，点击保存
+4. 密钥自动存入系统密钥链（keyring）+ `.env` 文件
+
+**方式二：环境变量**
 
 ```bash
-make help          # 显示所有可用命令
+# Linux/macOS
+export DEEPSEEK_API_KEY=sk-your-key
+export OPENAI_API_KEY=sk-your-key
 
-# 环境
-make install       # 安装所有依赖（venv）
-make test          # 运行全部测试（12项）
-make test-cov      # 测试 + 覆盖率报告
-make test-smoke    # 快速冒烟测试
+# Windows PowerShell
+$env:DEEPSEEK_API_KEY="sk-your-key"
+```
 
-# 数据
-make download-crypto   # 下载加密货币数据
-make download-ashare   # 下载 A 股数据
+**方式三：.env 文件**
 
-# 回测
-make backtest         # 运行示例回测（Dual Thrust）
-make backtest-all     # 回测所有策略
+```bash
+cp .env.example .env
+# 编辑 .env 填入密钥
+```
 
-# Web
-make dashboard        # 启动 Web 看板
-make api              # 仅启动 API 服务
+### 切换数据源
 
-# Docker
-make docker-build     # 构建镜像
-make docker-up        # 启动 Docker 服务
-make docker-up-full   # 启动完整服务（含数据下载）
-make docker-down      # 停止
-make docker-logs      # 查看日志
+编辑 `config/data_source.yaml`：
 
-# 代码质量
-make lint             # 代码检查（ruff）
-make lint-fix         # 自动修复
-make format           # 格式化（black）
-
-# 清理
-make clean            # 清理缓存文件
-make clean-all        # 深度清理（含 venv + 数据）
+```yaml
+data:
+  quote:
+    provider: akshare  # 可选: akshare, ccxt, qmt, tushare_pro
+  news:
+    provider: cailian  # 可选: cailian, sina, cryptopanich
 ```
 
 ---
 
-## 🧪 测试体系
+## 🌐 Web 仪表盘
 
-| 测试 | 文件 | 内容 | 数量 |
-|------|------|------|------|
-| 冒烟测试 | `tests/smoke_test.py` | 模块导入、配置解析、完整回测流程 | 3 |
-| 压力测试 | `tests/test_stress.py` | 10K 数据集、多策略并行、闪电崩盘场景、风控边界、事件吞吐量、大规模因子计算 | 9 |
+### 页面一览
 
-```bash
-# 运行全部测试
-make test
+| 页面 | 图标 | 功能 |
+|------|------|------|
+| **总览** | 📊 | A股/美股/加密货币实时行情 + KPI 卡片 + 权益曲线 |
+| **回测** | 📈 | 策略选择 → 参数配置 → 一键运行 → 结果可视化 |
+| **策略** | 📋 | 全部 16 个策略的中文卡片展示与参数说明 |
+| **交易** | 💹 | 实盘执行器启停控制 + 实时持仓监控 |
+| **AI 分析** | 🤖 | 新闻抓取 → LLM 情感分析 → 情感趋势 → 推荐信号 |
+| **数据** | 📡 | 行情数据一键下载 + 已缓存数据状态 |
+| **日志** | 📝 | 系统日志 + 交易记录 |
+| **设置** | ⚙️ | DeepSeek / OpenAI / Anthropic API Key 配置 + 系统信息 |
 
-# 仅冒烟测试
-make test-smoke
+### 实时行情
 
-# 带覆盖率
-make test-cov
-# 结果在 htmlcov/index.html
+```
+顶栏（始终可见，切换页面不丢失）:
+💎 BTC $67,284  +1.2%  ETH $3,456  -0.4%
+🇨🇳 上证指数 3,152  +0.3%  沪深300 3,780  +0.5%
+🇺🇸 标普500 5,340  +0.8%  苹果 $192  -0.2%
 ```
 
 ---
 
-## 🧩 内置策略
+## 📡 API 参考
 
-| 策略 | 类型 | 文件 | 描述 |
-|------|------|------|------|
-| Dual Thrust | 突破 | `dual_thrust.py` | 前N日区间双重突破，经典日内策略 |
-| R Breaker | 突破/反转 | `r_breaker.py` | 基于昨日价格的6级关键价位，日内交易 |
-| Turtle | 趋势 | `turtle.py` | 唐奇安通道入场 + ATR 浮动止损 |
-| Bollinger | 反转 | `bollinger.py` | 布林带均值回归 + RSI 过滤确认 |
-| Dual MA | 趋势 | `dual_ma.py` | 双均线金叉死叉 + 网格仓位管理 |
-| Grid+MA | 网格 | `grid_ma.py` | MA 趋势方向过滤的网格交易 |
-| Simple MM | 做市 | `simple_mm.py` | 中间价双侧限价单，赚取买卖价差 |
-| Panic Reversal | 反转 | `panic_reversal.py` | 恐慌性下跌检测 + 反转确认入场 |
-| Low Vol Defense | 防御 | `low_vol_defense.py` | 高波动率防御模式，自动减仓 |
-| Multi-Factor | 选股 | `multi_factor.py` | 多因子评分选股，支持动量/波动率/RSI等 |
-| Sector Rotation | 轮动 | `sector_rotation.py` | 板块动量轮动，定期调仓 |
+### REST 端点
 
----
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/health` | GET | 健康检查 |
+| `/api/equity` | GET | 权益曲线数据 |
+| `/api/positions` | GET | 当前持仓 |
+| `/api/trades` | GET | 交易记录 |
+| `/api/strategies` | GET | 策略列表与状态 |
+| `/api/market/overview` | GET | 市场概况 |
+| `/api/backtest/run` | POST | 运行回测 |
+| `/api/llm/analysis/{symbol}` | GET | LLM 分析报告 |
 
-## ⚙️ 配置详解
+### WebSocket
 
-所有配置集中管理在 `config/` 目录：
+```
+ws://localhost:8001/ws
+```
 
-| 文件 | 用途 | 关键参数 |
-|------|------|----------|
-| `data_source.yaml` | 数据源配置 | `quote.provider` (akshare/ccxt), `storage.parquet_path` |
-| `llm.yaml` | LLM 配置 | `provider` (deepseek/openai), `model`, `api_key` (从环境变量读取) |
-| `strategies.yaml` | 策略注册 | 启用/禁用策略及各策略参数 |
-| `risk_config.yaml` | 风控阈值 | `max_single_symbol_pct: 0.20`, 连续亏损熔断, 黑名单 |
-| `execution.yaml` | 执行配置 | 券商选择、成本模型、通知渠道 |
-
-环境变量引用：YAML 中支持 `${VAR_NAME}` 和 `${VAR_NAME:default}` 语法。
+每秒推送 `{"equity": ..., "positions": [...], "timestamp": "..."}`
 
 ---
 
 ## 📁 项目结构
 
 ```
-quantengine/
-├── config/              # 配置管理（YAML + 环境变量解析）
-├── data/                # 数据层
-│   ├── base.py          #   数据源 ABC
-│   ├── akshare_fetcher.py   # A 股行情
-│   ├── ccxt_fetcher.py      # 加密货币行情
-│   ├── eastmoney_fetcher.py  # 资金流向
-│   ├── news_fetcher.py       # 新闻抓取
-│   ├── cache.py              # 三级缓存（LRU → Redis → Parquet）
-│   └── storage.py            # Parquet 文件存储
-├── backtest/            # 回测引擎
-│   ├── engine.py        #   事件驱动主循环
-│   ├── broker.py        #   订单执行、多策略资金竞争
-│   ├── cost_model.py    #   全成本模拟
-│   ├── position_manager.py  # 持仓管理、强平
-│   ├── analyzer.py      #   绩效分析（夏普/回撤/Calmar）
-│   └── event_bus.py     #   事件总线
-├── strategy/            # 策略层
-│   ├── base.py          #   BaseStrategy ABC
-│   ├── registry.py      #   动态注册/加载
-│   └── builtin/         #   10 个内置策略
-├── factor/              # 因子系统
-│   └── base.py          #   动量/波动率/RSI/MACD 因子库
-├── execution/           # 执行层
-│   ├── base.py          #   BrokerClient ABC
-│   ├── ccxt_client.py   #   加密交易所对接
-│   ├── qmt_client.py    #   A 股 QMT 对接
-│   ├── executor.py      #   扫描→信号→订单循环
-│   ├── risk_manager.py  #   风控引擎
-│   └── reporter.py      #   日报生成（Log/DingTalk/WeChat）
-├── analysis/            # 分析服务
-│   ├── llm/             #   DeepSeek / OpenAI 适配器
-│   ├── screener.py      #   自动选股
-│   └── signal_advisor.py # 买卖信号推荐
-├── web/                 # Web 展示
-│   ├── api.py           #   FastAPI REST + WebSocket
-│   ├── dashboard.py     #   Plotly Dash 5面板
-│   └── app.py           #   启动入口
-└── utils/               # 工具
-    └── logging.py       #   Loguru 日志配置
+quantengine-pro/
+├── quantengine/                  # 核心代码
+│   ├── __init__.py
+│   ├── config/                   # 配置管理器
+│   │   └── manager.py
+│   ├── data/                     # 数据层
+│   │   ├── base.py               # 抽象基类（Quote/MarketFlow/News）
+│   │   ├── akshare_fetcher.py    # A股 + 美股 数据
+│   │   ├── ccxt_fetcher.py       # 加密货币数据
+│   │   ├── eastmoney_fetcher.py  # 大盘资金流
+│   │   ├── news_fetcher.py       # 新闻聚合
+│   │   └── cache.py              # 三级缓存
+│   ├── factor/                   # 因子计算
+│   │   └── base.py               # 因子基类 + 内置因子
+│   ├── strategy/                 # 策略层
+│   │   ├── base.py               # BaseStrategy + Signal
+│   │   ├── registry.py           # 策略注册中心
+│   │   └── builtin/              # 16个内置策略
+│   │       ├── dual_thrust.py
+│   │       ├── turtle.py
+│   │       ├── bollinger.py
+│   │       ├── dual_ma.py
+│   │       ├── r_breaker.py
+│   │       ├── grid_ma.py
+│   │       ├── simple_mm.py
+│   │       ├── panic_reversal.py
+│   │       ├── low_vol_defense.py
+│   │       ├── multi_factor.py
+│   │       ├── sector_rotation.py
+│   │       ├── aberration.py
+│   │       ├── pivot_point.py
+│   │       ├── fei_ali.py
+│   │       ├── dynamic_breakout_ii.py
+│   │       └── rsi_reversal.py
+│   ├── backtest/                 # 回测层
+│   │   ├── engine.py             # 回测引擎
+│   │   ├── event_bus.py          # 事件总线
+│   │   ├── broker.py             # 模拟券商
+│   │   ├── cost_model.py         # 成本模型
+│   │   ├── position_manager.py   # 持仓管理
+│   │   └── analyzer.py           # 绩效分析
+│   ├── execution/                # 执行层
+│   │   ├── base.py               # BrokerClient 抽象
+│   │   ├── executor.py           # 实盘执行器
+│   │   ├── risk_manager.py       # 风控
+│   │   ├── reporter.py           # 每日报告
+│   │   ├── qmt_client.py         # QMT A股客户端
+│   │   └── ccxt_client.py        # CCXT 加密货币客户端
+│   ├── analysis/                 # 分析服务层
+│   │   ├── llm/
+│   │   │   ├── base.py           # LLM 服务抽象
+│   │   │   └── deepseek.py       # DeepSeek 实现
+│   │   ├── market_overview.py    # 大盘指标
+│   │   ├── screener.py           # 自动选股
+│   │   └── signal_advisor.py     # 信号推荐
+│   ├── web/                      # 展示层
+│   │   ├── app.py                # FastAPI + Dash 启动入口
+│   │   ├── dashboard.py          # Plotly Dash 仪表盘（1117 行）
+│   │   └── api.py                # FastAPI REST + WebSocket
+│   └── utils/
+│       └── logging.py            # 日志配置
+├── config/                       # 配置文件
+│   ├── data_source.yaml
+│   ├── llm.yaml
+│   ├── strategies.yaml
+│   ├── risk_config.yaml
+│   └── execution.yaml
+├── scripts/                      # 命令行工具
+│   ├── run_backtest.py           # 回测 CLI
+│   ├── optimize.py               # Optuna 参数优化
+│   └── download_data.py          # 数据下载
+├── tests/                        # 测试
+│   ├── smoke_test.py             # 冒烟测试
+│   └── test_stress.py            # 压力测试
+├── Dockerfile
+├── docker-compose.yml
+├── Makefile
+├── setup.py                      # 一键安装脚本
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## 🛠️ 常见问题
+## 🧪 开发指南
 
-**Q: 启动 Dashboard 报错 `ModuleNotFoundError`**
+### 添加新策略
 
-确保已激活虚拟环境并安装了所有依赖：
+```python
+from quantengine.strategy.base import BaseStrategy, Signal, SignalType, StrategyContext
+
+class MyStrategy(BaseStrategy):
+    def __init__(self, params: dict = None):
+        super().__init__(params)
+        self.param1 = self.params.get("param1", 20)
+
+    def on_bar(self, bar: pd.Series, context: StrategyContext) -> Signal | None:
+        # 策略逻辑
+        if condition:
+            return Signal(
+                timestamp=bar["timestamp"],
+                symbol=context.symbol,
+                type=SignalType.BUY,
+                price=bar["close"],
+            )
+        return None
+```
+
+### 添加新数据源
+
+```python
+from quantengine.data.base import BaseQuoteFetcher
+
+class MyFetcher(BaseQuoteFetcher):
+    async def fetch_kline(self, symbol, freq, start_date=None, end_date=None, limit=1000):
+        # 实现行情获取
+        ...
+```
+
+### 运行测试
 
 ```bash
-venv\Scripts\activate   # Windows
-source venv/bin/activate  # Linux/macOS
-pip install -r requirements.txt
+# 全量测试（12 项）
+pytest tests/ -v
+
+# 仅冒烟测试
+pytest tests/smoke_test.py -v
+
+# 仅压力测试
+pytest tests/test_stress.py -v
 ```
-
-**Q: Docker 启动后访问 localhost:8050 显示空白**
-
-首次构建需要下载依赖，等待 1-2 分钟后刷新：
-
-```bash
-docker compose logs -f app  # 查看构建日志
-```
-
-**Q: 是否需要配置 API Key 才能使用？**
-
-- **不需要** — 回测、数据下载、策略开发完全离线可用
-- LLM 分析功能（AI 看板、信号推荐）需要 `DEEPSEEK_API_KEY`
-
-**Q: Redis 未安装是否影响使用？**
-
-不影响。本地开发时 Redis 不可用，系统自动降级为内存 + Parquet 缓存，仅输出一条 `WARNING` 日志。
-
-**Q: Windows `python` 命令找不到？**
-
-请从 https://python.org 安装 Python 3.10+，安装时勾选 "Add Python to PATH"。
 
 ---
 
-## 📚 参考文档
+## ❓ 常见问题
 
-| 文档 | 位置 | 内容 |
-|------|------|------|
-| 架构文档 | `docs/ARCHITECTURE.md` | 6层架构详解、数据流图、设计原则 |
-| 任务计划 | `task_plan.md` | 5阶段实现计划（57项） |
-| 调研记录 | `findings.md` | 技术选型决策依据 |
+### Q: 打开页面后看不到数据？
+首次加载时导航回调自动触发，约 1-2 秒后行情数据开始刷新。如持续显示"等待行情数据..."，检查网络连接是否正常。
+
+### Q: 行情数据显示"模拟"而非"实时"？
+免费数据源（东方财富、Binance 公开 API）在以下情况会降级为模拟数据：
+- 网络不可用（断网）
+- 数据源触发反爬机制（请求过于频繁）
+- 非交易时间（A股休市）
+模拟数据为真实的随机波动，不影响界面功能展示。
+
+### Q: AI 分析提示"请配置 API Key"？
+1. 点击侧边栏 ⚙️ **设置**
+2. 填入 DeepSeek API Key（以 `sk-` 开头）
+3. 点击保存
+4. 进入 AI 分析页，点击「获取最新新闻并分析」
+
+### Q: 如何查看回测结果？
+1. 点击侧边栏 📈 **回测**
+2. 选择策略、交易对、周期、初始资金
+3. 点击「运行回测」
+4. 结果显示：权益曲线图 + 交易明细 + 绩效指标
+
+### Q: 如何下载历史数据？
+1. 点击侧边栏 📡 **数据**
+2. 选择市场（加密货币 / A 股）
+3. 输入交易对符号
+4. 选择周期和数据量
+5. 点击「开始下载」
+
+### Q: 实盘交易如何配置？
+当前 A 股实盘支持 QMT 券商接口，加密货币支持 CCXT（Binance 等）。交易控制页面可启停实盘执行器，设置扫描周期。
 
 ---
 
-## 设计原则
+## 📄 License
 
-1. **分层解耦**: 各层通过抽象接口交互，可独立替换实现
-2. **插件化**: 数据源/券商/LLM 可通过 YAML 配置切换，无需改代码
-3. **事件驱动**: 严格按 MARKET_DATA → SIGNAL → ORDER → FILL → POSITION_UPDATE 事件流执行
-4. **全成本**: 佣金/印花税/滑点/融资利息全部纳入模拟
-5. **免费优先**: akshare + CCXT + DeepSeek 免费 API 提供完整功能，付费方案可通过配置平滑升级
+MIT License — 详见 [LICENSE](LICENSE)
 
-## License
+---
 
-MIT © QuantEngine Team
+*QuantEngine Pro v0.1.0 — 从数据到交易的全流程量化平台*
