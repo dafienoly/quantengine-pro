@@ -1857,15 +1857,27 @@ def _register_callbacks(app: dash.Dash):
             content = "\n".join(lines)
         content += f"\n{key_name}={key_value}\n"
         env_path.write_text(content.strip() + "\n", encoding="utf-8")
-        # Unix: 设置文件权限为 600
+        # Unix/Linux: 设置文件权限为 600（仅所有者可读写）
+        import os
+        import sys as _sys
+        if _sys.platform != "win32":
+            try:
+                os.chmod(env_path, 0o600)
+            except OSError:
+                pass
+
+    def _try_keyring_store(service: str, key: str) -> bool:
+        """尝试使用系统密钥管理器存储（keyring）。返回是否成功。"""
         try:
-            import os
-            os.chmod(env_path, 0o600)
+            import keyring
+            keyring.set_password("QuantEnginePro", service, key)
+            return True
         except Exception:
-            pass
+            return False
 
     @app.callback(
-        Output("deepseek-key-status", "children"),
+        [Output("deepseek-key-status", "children"),
+         Output("api-keys-store", "data")],
         Input("save-deepseek-key", "n_clicks"),
         State("cfg-deepseek-key", "value"),
         State("api-keys-store", "data"),
@@ -1874,21 +1886,29 @@ def _register_callbacks(app: dash.Dash):
     def save_deepseek_key(n, key, store):
         if not key or not key.startswith("sk-"):
             return html.Span("⚠️ 请输入有效的 API Key（以 sk- 开头）",
-                            style={"color": COLORS["warning"]})
+                            style={"color": COLORS["warning"]}), store
+        store = dict(store)  # 不可变副本
         store["deepseek_key"] = key
+        storage_methods = []
+        # 1. 尝试 keyring（最安全）
+        if _try_keyring_store("deepseek", key):
+            storage_methods.append("系统密钥链")
+        # 2. 尝试 .env（明文但持久）
         try:
             _save_key_to_env("DEEPSEEK_API_KEY", key)
-            return html.Span([
-                html.Span("✅ 已保存（内存 + .env）", style={"color": COLORS["success"]}),
-                html.Span(" 密钥仅本地存储，建议设置文件权限",
-                         style={"color": COLORS["text_muted"], "fontSize": "11px", "marginLeft": "8px"}),
-            ])
-        except Exception as e:
-            return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
-                            style={"color": COLORS["info"]})
+            storage_methods.append(".env（明文）")
+        except Exception:
+            pass
+        method_str = " + ".join(storage_methods) if storage_methods else "内存（仅本次会话）"
+        return html.Span([
+            html.Span("✅ 已保存", style={"color": COLORS["success"]}),
+            html.Span(f" 存储: {method_str}",
+                     style={"color": COLORS["text_muted"], "fontSize": "11px", "marginLeft": "8px"}),
+        ]), store
 
     @app.callback(
-        Output("openai-key-status", "children"),
+        [Output("openai-key-status", "children"),
+         Output("api-keys-store", "data")],
         Input("save-openai-key", "n_clicks"),
         State("cfg-openai-key", "value"),
         State("api-keys-store", "data"),
@@ -1897,19 +1917,27 @@ def _register_callbacks(app: dash.Dash):
     def save_openai_key(n, key, store):
         if not key or not key.startswith("sk-"):
             return html.Span("⚠️ 请输入有效的 API Key（以 sk- 开头）",
-                            style={"color": COLORS["warning"]})
+                            style={"color": COLORS["warning"]}), store
+        store = dict(store)
         store["openai_key"] = key
+        storage_methods = []
+        if _try_keyring_store("openai", key):
+            storage_methods.append("系统密钥链")
         try:
             _save_key_to_env("OPENAI_API_KEY", key)
-            return html.Span([
-                html.Span("✅ 已保存（内存 + .env）", style={"color": COLORS["success"]}),
-            ])
-        except Exception as e:
-            return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
-                            style={"color": COLORS["info"]})
+            storage_methods.append(".env（明文）")
+        except Exception:
+            pass
+        method_str = " + ".join(storage_methods) if storage_methods else "内存（仅本次会话）"
+        return html.Span([
+            html.Span("✅ 已保存", style={"color": COLORS["success"]}),
+            html.Span(f" 存储: {method_str}",
+                     style={"color": COLORS["text_muted"], "fontSize": "11px", "marginLeft": "8px"}),
+        ]), store
 
     @app.callback(
-        Output("anthropic-key-status", "children"),
+        [Output("anthropic-key-status", "children"),
+         Output("api-keys-store", "data")],
         Input("save-anthropic-key", "n_clicks"),
         State("cfg-anthropic-key", "value"),
         State("api-keys-store", "data"),
@@ -1918,16 +1946,23 @@ def _register_callbacks(app: dash.Dash):
     def save_anthropic_key(n, key, store):
         if not key or not key.startswith("sk-ant-"):
             return html.Span("⚠️ 请输入有效的 API Key（以 sk-ant- 开头）",
-                            style={"color": COLORS["warning"]})
+                            style={"color": COLORS["warning"]}), store
+        store = dict(store)
         store["anthropic_key"] = key
+        storage_methods = []
+        if _try_keyring_store("anthropic", key):
+            storage_methods.append("系统密钥链")
         try:
             _save_key_to_env("ANTHROPIC_API_KEY", key)
-            return html.Span([
-                html.Span("✅ 已保存（内存 + .env）", style={"color": COLORS["success"]}),
-            ])
-        except Exception as e:
-            return html.Span(f"✅ 已保存到内存（写入 .env 失败: {e}）",
-                            style={"color": COLORS["info"]})
+            storage_methods.append(".env（明文）")
+        except Exception:
+            pass
+        method_str = " + ".join(storage_methods) if storage_methods else "内存（仅本次会话）"
+        return html.Span([
+            html.Span("✅ 已保存", style={"color": COLORS["success"]}),
+            html.Span(f" 存储: {method_str}",
+                     style={"color": COLORS["text_muted"], "fontSize": "11px", "marginLeft": "8px"}),
+        ]), store
 
     @app.callback(
         Output("ticker-bar", "children"),
